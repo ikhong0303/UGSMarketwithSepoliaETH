@@ -1,0 +1,67 @@
+{
+  "Gold_GetQuote": [],
+  "Gold_Claim": [
+    {
+      "name": "tx_hash",
+      "type": "String",
+      "required": true
+    }
+  ],
+  "Mkt_GetActiveListings": [
+    {
+      "name": "limit",
+      "type": "Numeric",
+      "required": false
+    },
+    {
+      "name": "sort",
+      "type": "String",
+      "required": false
+    }
+  ],
+  "Mkt_CreateListing": [
+    {
+      "name": "players_inventory_item_id",
+      "type": "String",
+      "required": true
+    },
+    {
+      "name": "price",
+      "type": "Numeric",
+      "required": true
+    },
+    {
+      "name": "currency_id",
+      "type": "String",
+      "required": false
+    }
+  ],
+  "Mkt_BuyListing": [
+    {
+      "name": "listing_id",
+      "type": "String",
+      "required": true
+    }
+  ],
+  "Mkt_CancelListing": [
+    {
+      "name": "listing_id",
+      "type": "String",
+      "required": true
+    }
+  ],
+  "Mkt_ClaimEarnings": [
+    {
+      "name": "currency_id",
+      "type": "String",
+      "required": false
+    }
+  ],
+  "Mkt_Gacha": [
+    {
+      "name": "request_id",
+      "type": "String",
+      "required": true
+    }
+  ]
+}

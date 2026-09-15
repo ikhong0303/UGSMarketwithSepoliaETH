@@ -1,0 +1,7 @@
+{
+  "receiverAddress": "REPLACE_WITH_YOUR_SEPOLIA_RECEIVER_ADDRESS",
+  "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
+  "priceWei": "100000000000000",
+  "goldAmount": 10000,
+  "confirmations": 3
+}

@@ -1,0 +1,19 @@
+<linker>
+  <assembly fullname="Assembly-CSharp">
+    <type fullname="SimpleMarket.SceneWalletPanel/Quote" preserve="all" />
+    <type fullname="SimpleMarket.SceneWalletPanel/Receipt" preserve="all" />
+    <type fullname="SimpleMarket.ReownWalletBridge/Pending" preserve="all" />
+    <type fullname="SimpleMarket.WebGlWallet" preserve="all" />
+    <type fullname="SimpleMarket.WebGlWallet/Request" preserve="all" />
+    <type fullname="SimpleMarket.WebGlWallet/Result" preserve="all" />
+    <type fullname="SimpleMarket.SimpleMarketApp/Quote" preserve="all" />
+    <type fullname="SimpleMarket.SimpleMarketApp/Claim" preserve="all" />
+    <type fullname="SimpleMarket.SimpleMarketApp/Gacha" preserve="all" />
+    <type fullname="PortfolioMarketDemo/CreateListingResult" preserve="all" />
+    <type fullname="PortfolioMarketDemo/MarketListResult" preserve="all" />
+    <type fullname="PortfolioMarketDemo/ListingDto" preserve="all" />
+    <type fullname="PortfolioMarketDemo/BuyResult" preserve="all" />
+    <type fullname="PortfolioMarketDemo/CancelResult" preserve="all" />
+    <type fullname="PortfolioMarketDemo/ClaimResult" preserve="all" />
+  </assembly>
+</linker>

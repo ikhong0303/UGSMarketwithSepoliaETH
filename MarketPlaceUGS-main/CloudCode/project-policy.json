@@ -1,0 +1,11 @@
+{
+  "statements": [
+    {
+      "Sid": "SimpleMarketServerOnlyEconomyWrites",
+      "Effect": "Deny",
+      "Action": ["Write"],
+      "Principal": "Player",
+      "Resource": "urn:ugs:economy:/**"
+    }
+  ]
+}
