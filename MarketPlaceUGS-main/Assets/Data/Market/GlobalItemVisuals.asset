@@ -25,3 +25,7 @@ MonoBehaviour:
     itemName: "\uD30C\uB780\uD3EC\uC158"
     price: 130
     icon: {fileID: 21300000, guid: 2e7d1f34ab31fc54aa5c0f69b6545398, type: 3}
+  - id: LEGENDARY_SWORD
+    itemName: "\uC804\uC124\uAC80"
+    price: 1000
+    icon: {fileID: 21300000, guid: 164aa46380aca224bbef827fb2ccda82, type: 3}

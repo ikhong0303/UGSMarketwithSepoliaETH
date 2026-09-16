@@ -158,14 +158,20 @@ public class PortfolioMarketDemo : MonoBehaviour
     // -------------------------
     // Economy: Inventory
     // -------------------------
-    private async Task RefreshInventoryAsync()
+    public async Task RefreshInventoryAsync()
     {
         try
         {
             ClearChildren(inventoryContent);
 
+            await EnsureEconomyConfigSyncedAsync();
             GetInventoryResult inv = await EconomyService.Instance.PlayerInventory.GetInventoryAsync();
-            List<PlayersInventoryItem> items = inv.PlayersInventoryItems;
+            List<PlayersInventoryItem> items = new(inv.PlayersInventoryItems);
+            while (inv.HasNext)
+            {
+                inv = await inv.GetNextAsync();
+                items.AddRange(inv.PlayersInventoryItems);
+            }
 
             foreach (var item in items)
             {
@@ -231,8 +237,12 @@ public class PortfolioMarketDemo : MonoBehaviour
 
             SetMessage("랜덤 아이템 지급 요청 중...");
 
-            int randomIndex = UnityEngine.Random.Range(0, itemVisuals.items.Count);
-            string resourceId = itemVisuals.items[randomIndex].id;
+            // Paid/NFT visuals must not automatically join this legacy free test pool.
+            var freeItems = itemVisuals.items.FindAll(x => x != null &&
+                (x.id == "SWORD" || x.id == "REDPOTION" || x.id == "BLUEPOTION"));
+            if (freeItems.Count == 0) { SetMessage("무료 테스트 아이템 목록이 비어 있습니다."); return; }
+            int randomIndex = UnityEngine.Random.Range(0, freeItems.Count);
+            string resourceId = freeItems[randomIndex].id;
 
             PlayersInventoryItem item = await EconomyService.Instance.PlayerInventory.AddInventoryItemAsync(resourceId);
  

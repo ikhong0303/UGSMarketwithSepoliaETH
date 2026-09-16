@@ -427,10 +427,5 @@ function createAdapter(context) {
   };
 }
 
-module.exports = async (args) => createMarket(createAdapter(args.context), args.context).Gold_Claim(args.params || {});
-module.exports.params = {
-  "tx_hash": {
-    "type": "String",
-    "required": true
-  }
-};
+module.exports = async (args) => createMarket(createAdapter(args.context), args.context).Sword_GetQuote(args.params || {});
+module.exports.params = {};

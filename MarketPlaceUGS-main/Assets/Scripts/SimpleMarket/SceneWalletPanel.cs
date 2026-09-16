@@ -19,6 +19,8 @@ namespace SimpleMarket
         public Button walletButton;
         public Button paymentCheckButton;
         public Button buy10000GoldButton;
+        public Button buyLegendarySwordButton;
+        public Button swordPaymentCheckButton;
         public TMP_Text walletAddressText;
         public TMP_Text sepoliaEthText;
         public TMP_Text paymentStatusText;
@@ -33,13 +35,13 @@ namespace SimpleMarket
         private WebGlWallet browser;
         private ReownWalletBridge qr;
         private string observedPlayer = "", connectedAddress = "";
-        private bool busy, connected, pending;
+        private bool busy, connected, pending, swordPending;
         private readonly CancellationTokenSource lifetime = new();
-        [Serializable] private class Quote { public string chainId, to, value, data, priceEth; public int goldAmount, confirmations; }
-        [Serializable] private class Receipt { public string status, txHash, pendingReason; public int goldAmount; }
+        [Serializable] private class Quote { public string chainId, to, value, data, priceEth, itemId; public int goldAmount, confirmations, quantity; }
+        [Serializable] private class Receipt { public string status, txHash, pendingReason, itemId, instanceId; public int goldAmount, quantity; }
 
         private string Player => UnityServices.State == ServicesInitializationState.Initialized && AuthenticationService.Instance.IsSignedIn ? AuthenticationService.Instance.PlayerId : "";
-        private string OwnerKey(string player) => Application.cloudProjectId + ":" + environmentName + ":" + player;
+        private string OwnerKey(string player, bool sword = false) => Application.cloudProjectId + ":" + environmentName + ":" + player + (sword ? ":legendary-sword-v1" : "");
         private void Awake()
         {
             browser = GetComponent<WebGlWallet>(); qr = GetComponent<ReownWalletBridge>();
@@ -47,6 +49,8 @@ namespace SimpleMarket
             if (walletButton) walletButton.onClick.AddListener(ConnectWallet);
             if (paymentCheckButton) paymentCheckButton.onClick.AddListener(CheckPayment);
             if (buy10000GoldButton) buy10000GoldButton.onClick.AddListener(BuyGold);
+            if (buyLegendarySwordButton) buyLegendarySwordButton.onClick.AddListener(BuyLegendarySword);
+            if (swordPaymentCheckButton) swordPaymentCheckButton.onClick.AddListener(CheckSwordPayment);
             if (forgetPaymentButton) forgetPaymentButton.onClick.AddListener(ForgetPayment);
             WalletChanged(); Message("게임 로그인 후 지갑을 연결하세요.");
         }
@@ -54,7 +58,7 @@ namespace SimpleMarket
         {
             string player = Player;
             if (player == observedPlayer) return;
-            observedPlayer = player; pending = false; WalletChanged();
+            observedPlayer = player; pending = false; swordPending = false; WalletChanged();
             if (transactionHashInput) transactionHashInput.text = "";
             Message(player == "" ? "게임 로그인 후 지갑을 연결하세요." : "지갑 연결을 누르세요. 이전 결제는 결제 확인으로 복구할 수 있습니다.");
             Buttons();
@@ -72,6 +76,8 @@ namespace SimpleMarket
             if (walletButton) walletButton.interactable = allowed;
             if (paymentCheckButton) paymentCheckButton.interactable = allowed;
             if (buy10000GoldButton) buy10000GoldButton.interactable = allowed && connected && !pending;
+            if (buyLegendarySwordButton) buyLegendarySwordButton.interactable = allowed && connected && !swordPending;
+            if (swordPaymentCheckButton) swordPaymentCheckButton.interactable = allowed;
             if (forgetPaymentButton) forgetPaymentButton.interactable = allowed;
         }
         private void Message(string text) { if (paymentStatusText) paymentStatusText.text = text; }
@@ -102,8 +108,8 @@ namespace SimpleMarket
         private static string FriendlyError(string error)
         {
             if (error.Contains("REVIEW_REQUIRED")) return "지급 결과를 관리자가 확인해야 합니다. 거래 해시를 보관하고 재결제하지 마세요.";
-            if (error.Contains("SETUP_REQUIRED")) return "Cloud Save simple_market 설정과 COIN Publish를 확인하세요.";
-            if (error.Contains("WRONG_PLAYER")) return "이 결제를 시작한 게임 계정으로 로그인하세요.";
+            if (error.Contains("SETUP_REQUIRED")) return "Cloud Save 설정 및 Economy COIN / LEGENDARY_SWORD Publish를 확인하세요.";
+            if (error.Contains("WRONG_PLAYER")) return "결제한 게임 계정과 상품(골드/전설검)에 맞는 확인 버튼을 사용하세요.";
             if (error.Contains("RPC_UNAVAILABLE")) return "블록체인 조회가 지연됩니다. 잠시 후 결제 확인을 누르세요.";
             if (error.Contains("INVALID_")) return "거래 정보 또는 서버 설정이 일치하지 않습니다. 수신 주소·금액·거래 해시를 확인하세요.";
             if (error.Contains("TRANSACTION_FAILED")) return "실패한 블록체인 거래입니다. 골드가 지급되지 않았습니다.";
@@ -118,11 +124,11 @@ namespace SimpleMarket
             return qr.Call(request);
 #endif
         }
-        private async Task<WebGlWallet.Result> Pending(string player)
+        private async Task<WebGlWallet.Result> Pending(string player, bool sword = false)
         {
-            var result = await Wallet(new() { action = "pending", storageKey = OwnerKey(player) });
-            CheckOwner(player); pending = result.status == "PENDING";
-            if (transactionHashInput && !string.IsNullOrEmpty(result.txHash)) transactionHashInput.text = result.txHash;
+            var result = await Wallet(new() { action = "pending", storageKey = OwnerKey(player, sword) });
+            CheckOwner(player);
+            if (sword) swordPending = result.status == "PENDING"; else pending = result.status == "PENDING";
             return result;
         }
         public void ConnectWallet() => _ = Run(async player =>
@@ -135,58 +141,64 @@ namespace SimpleMarket
             if (walletAddressText) walletAddressText.text = "지갑: " + result.address;
             if (sepoliaEthText) sepoliaEthText.text = "Sepolia ETH: " + result.balanceEth;
             await Pending(player);
-            Message(pending ? "이전 결제가 있습니다. 결제 확인을 누르세요." : "연결 완료. 0.0001 Sepolia ETH + 가스비로 10,000골드를 구매합니다.");
+            await Pending(player, true);
+            Message(pending || swordPending ? "이전 결제가 있습니다. 해당 상품의 결제 확인을 누르세요." : "연결 완료. 골드 또는 전설검 구매를 선택하세요.");
         });
-        public void BuyGold() => _ = Run(async player =>
+        public void BuyGold() => BuyProduct(false);
+        public void BuyLegendarySword() => BuyProduct(true);
+        private void BuyProduct(bool sword) => _ = Run(async player =>
         {
-            await Pending(player);
-            if (pending) throw new Exception("이전 결제를 먼저 확인하세요.");
-            var quote = await CloudCodeService.Instance.CallEndpointAsync<Quote>("Gold_GetQuote", new Dictionary<string, object>());
+            var stored = await Pending(player, sword);
+            if (stored.status == "PENDING") throw new Exception("이전 결제를 먼저 확인하세요.");
+            var quote = await CloudCodeService.Instance.CallEndpointAsync<Quote>(sword ? "Sword_GetQuote" : "Gold_GetQuote", new Dictionary<string, object>());
             CheckOwner(player);
-            if (quote.chainId != "0xaa36a7" || quote.value != "0x5af3107a4000" || quote.goldAmount != 10000 || quote.priceEth != "0.0001") throw new Exception("INVALID_QUOTE");
+            if (quote.chainId != "0xaa36a7" || quote.value != "0x5af3107a4000" || quote.priceEth != "0.0001" ||
+                (sword ? quote.itemId != "LEGENDARY_SWORD" || quote.quantity != 1 : quote.goldAmount != 10000)) throw new Exception("INVALID_QUOTE");
             string from = connectedAddress;
             if (!connected || string.IsNullOrEmpty(from)) throw new Exception("지갑을 다시 연결하세요.");
-            Message("MetaMask에서 0.0001 Sepolia ETH + 가스비 결제를 승인하세요.");
+            Message((sword ? "전설검 1개: " : "10,000골드: ") + "MetaMask에서 0.0001 Sepolia ETH + 가스비를 승인하세요.");
             try
             {
-                var sent = await Wallet(new() { action = "send", storageKey = OwnerKey(player), from = from, to = quote.to, value = quote.value, data = quote.data });
+                var sent = await Wallet(new() { action = "send", storageKey = OwnerKey(player, sword), from = from, to = quote.to, value = quote.value, data = quote.data });
                 CheckOwner(player);
-                pending = true;
-                if (transactionHashInput) transactionHashInput.text = sent.txHash;
+                if (sword) swordPending = true; else pending = true;
                 Message("전송 완료. 블록체인 승인 및 UGS 지급 확인 중...");
                 for (int i = 0; i < 12; i++)
                 {
-                    if (await Claim(player, sent.txHash)) return;
+                    if (await Claim(player, sent.txHash, sword)) return;
                     await Task.Delay(8000, lifetime.Token);
                 }
                 Message("승인 대기 중입니다. 잠시 후 결제 확인을 누르세요. 다시 송금하지 않습니다.");
             }
-            finally { if (this && Player == player) await Pending(player); }
+            finally { if (this && Player == player) await Pending(player, sword); }
         });
-        public void CheckPayment() => _ = Run(async player =>
+        public void CheckPayment() => CheckProductPayment(false);
+        public void CheckSwordPayment() => CheckProductPayment(true);
+        private void CheckProductPayment(bool sword) => _ = Run(async player =>
         {
             string manualHash = transactionHashInput ? transactionHashInput.text.Trim() : "";
-            var stored = await Pending(player);
+            var stored = await Pending(player, sword);
             string hash = string.IsNullOrEmpty(manualHash) ? stored.txHash : manualHash;
             if (string.IsNullOrEmpty(hash))
             {
-                Message(pending ? "송금 결과 미확인. MetaMask 활동을 확인하세요. 전송이 없으면 Recovery로 기록을 해제하세요." : "확인할 결제가 없습니다. 골드 구매 후 사용하세요.");
+                Message(stored.status == "PENDING" ? "송금 결과 미확인. MetaMask 활동을 확인하세요. 전송이 없으면 해당 상품의 Recovery를 사용하세요." : "이 상품에 확인할 결제가 없습니다.");
                 return;
             }
-            if (hash != stored.txHash) await Wallet(new() { action = "remember", storageKey = OwnerKey(player), txHash = hash });
-            await Claim(player, hash);
+            CheckOwner(player);
+            // A manually entered hash is not persisted until the server accepts it.
+            await Claim(player, hash, sword);
         });
-        private async Task<bool> Claim(string player, string hash)
+        private async Task<bool> Claim(string player, string hash, bool sword = false)
         {
             CheckOwner(player);
             Receipt receipt;
-            try { receipt = await CloudCodeService.Instance.CallEndpointAsync<Receipt>("Gold_Claim", new Dictionary<string, object> { { "tx_hash", hash } }); }
+            try { receipt = await CloudCodeService.Instance.CallEndpointAsync<Receipt>(sword ? "Sword_Claim" : "Gold_Claim", new Dictionary<string, object> { { "tx_hash", hash } }); }
             catch (CloudCodeException e) when (e.ToString().Contains("TRANSACTION_FAILED"))
             {
-                await Wallet(new() { action = "clear", storageKey = OwnerKey(player), txHash = hash });
+                await Wallet(new() { action = "clear", storageKey = OwnerKey(player, sword), txHash = hash });
                 if (Player == player)
                 {
-                    pending = false;
+                    if (sword) swordPending = false; else pending = false;
                     if (transactionHashInput) transactionHashInput.text = "";
                 }
                 throw new Exception("TRANSACTION_FAILED");
@@ -194,18 +206,27 @@ namespace SimpleMarket
             CheckOwner(player);
             if (receipt.status == "PENDING")
             {
-                string reason = string.IsNullOrEmpty(receipt.pendingReason) ? "OLD_SERVER: Gold_Claim 진단 버전을 Publish하세요." : receipt.pendingReason;
+                string reason = string.IsNullOrEmpty(receipt.pendingReason) ? "OLD_SERVER: 해당 Claim 진단 버전을 Publish하세요." : receipt.pendingReason;
                 Message("입금 확인 대기: " + reason);
-                Debug.LogWarning("[GoldClaimDiagnostic] tx=" + hash + " reason=" + reason);
+                Debug.LogWarning("[" + (sword ? "Sword" : "Gold") + "ClaimDiagnostic] tx=" + hash + " reason=" + reason);
                 return false;
             }
-            if (receipt.status != "GRANTED") throw new Exception("REVIEW_REQUIRED");
-            await Wallet(new() { action = "clear", storageKey = OwnerKey(player), txHash = hash });
-            CheckOwner(player); pending = false;
-            if (transactionHashInput) transactionHashInput.text = "";
-            if (marketDemo != null) await marketDemo.RefreshCoinsAsync();
+            if (receipt.status != "GRANTED")
+            {
+                Debug.LogWarning("[" + (sword ? "Sword" : "Gold") + "ClaimDiagnostic] tx=" + hash + " reason=" + (receipt.pendingReason ?? "REVIEW_REQUIRED"));
+                throw new Exception("REVIEW_REQUIRED");
+            }
+            if (sword && (receipt.itemId != "LEGENDARY_SWORD" || receipt.quantity != 1)) throw new Exception("INVALID_RECEIPT");
+            await Wallet(new() { action = "clear", storageKey = OwnerKey(player, sword), txHash = hash });
             CheckOwner(player);
-            Message("결제 확인 완료. UGS에 10,000골드가 지급되었습니다.");
+            await Pending(player, sword);
+            if (transactionHashInput) transactionHashInput.text = "";
+            if (marketDemo != null)
+            {
+                if (sword) await marketDemo.RefreshInventoryAsync(); else await marketDemo.RefreshCoinsAsync();
+            }
+            CheckOwner(player);
+            Message(sword ? "결제 확인 완료. 전설검 1개가 지급되었습니다." : "결제 확인 완료. UGS에 10,000골드가 지급되었습니다.");
             return true;
         }
         public void ForgetPayment() => _ = Run(async player =>
@@ -214,7 +235,19 @@ namespace SimpleMarket
             CheckOwner(player); pending = false;
             Message("로컬 확인 기록만 해제했습니다. 환불이나 거래취소가 아닙니다. 재결제 전 MetaMask 활동을 확인하세요.");
         });
+        public void ForgetSwordPayment() => _ = Run(async player =>
+        {
+            await Wallet(new() { action = "forget", storageKey = OwnerKey(player, true) });
+            CheckOwner(player); swordPending = false;
+            Message("전설검의 로컬 기록만 해제했습니다. 재결제 전 MetaMask 활동을 확인하세요.");
+        });
 #if UNITY_EDITOR
+        [ContextMenu("Recovery - Clear unsubmitted SWORD payment")]
+        private void RecoverUnsubmittedSwordPayment()
+        {
+            if (!Application.isPlaying) { Debug.LogWarning("Play 모드에서 로그인 후 실행하세요."); return; }
+            if (UnityEditor.EditorUtility.DisplayDialog("전설검 결제 기록 해제", "MetaMask에 전설검 송금과 대기 요청이 없음을 확인했나요? 전송됐다면 취소하고 전설검 결제 확인을 사용하세요.", "전송 없음 - 해제", "취소")) ForgetSwordPayment();
+        }
         [ContextMenu("Recovery - Clear unsubmitted payment")]
         private void RecoverUnsubmittedPayment()
         {
@@ -230,6 +263,8 @@ namespace SimpleMarket
             if (walletButton) walletButton.onClick.RemoveListener(ConnectWallet);
             if (paymentCheckButton) paymentCheckButton.onClick.RemoveListener(CheckPayment);
             if (buy10000GoldButton) buy10000GoldButton.onClick.RemoveListener(BuyGold);
+            if (buyLegendarySwordButton) buyLegendarySwordButton.onClick.RemoveListener(BuyLegendarySword);
+            if (swordPaymentCheckButton) swordPaymentCheckButton.onClick.RemoveListener(CheckSwordPayment);
             if (forgetPaymentButton) forgetPaymentButton.onClick.RemoveListener(ForgetPayment);
             if (browser) browser.Changed -= WalletChanged;
             if (qr) qr.Changed -= WalletChanged;

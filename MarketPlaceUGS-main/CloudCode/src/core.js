@@ -48,8 +48,8 @@ function createMarket(api, context) {
     if (cfg.priceWei !== '100000000000000' || cfg.goldAmount !== 10000 || !Number.isInteger(cfg.confirmations) || cfg.confirmations < 3 || cfg.confirmations > 64) error('INVALID_CONFIG: 기본 상품은 0.0001 ETH / 10000 COIN, confirmations 3 이상입니다.');
     return cfg;
   }
-  function memo() {
-    const text = `UGS-GOLD-v1|${context.projectId}|${context.environmentId}|${playerId}`;
+  function memo(product = 'GOLD') {
+    const text = `UGS-${product}-v1|${context.projectId}|${context.environmentId}|${playerId}`;
     if (!/^[\x20-\x7e]+$/.test(text)) error('INVALID_CONTEXT');
     return '0x' + Array.from(text).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
   }
@@ -57,7 +57,7 @@ function createMarket(api, context) {
     if (p.playerId !== playerId) error('WRONG_PLAYER');
     return { status: p.status === 'GRANTED' ? 'GRANTED' : 'REVIEW_REQUIRED', txHash: p.txHash, goldAmount: p.amount };
   }
-  async function verifyPayment(cfg, txHash) {
+  async function verifyPayment(cfg, txHash, product = 'GOLD') {
     const rpc = (method, params) => api.rpc(cfg.rpcUrl, method, params);
     const [chain, tx, receipt] = await Promise.all([
       rpc('eth_chainId', []), rpc('eth_getTransactionByHash', [txHash]), rpc('eth_getTransactionReceipt', [txHash])
@@ -71,7 +71,7 @@ function createMarket(api, context) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(tx.from) || lower(tx.from) === receiver || lower(receipt.from) !== lower(tx.from)) error('INVALID_SENDER');
     if (tx.chainId && BigInt(tx.chainId) !== 11155111n) error('WRONG_CHAIN');
     if (BigInt(tx.value) !== BigInt(cfg.priceWei)) error('INVALID_AMOUNT');
-    if (lower(tx.input) !== memo()) error('WRONG_PLAYER: 해당 게임 계정으로 만든 결제가 아닙니다.');
+    if (lower(tx.input) !== memo(product)) error('WRONG_PLAYER: 상품 또는 게임 계정이 다른 결제입니다.');
     if (lower(tx.blockHash) !== lower(receipt.blockHash)) error('REORG_PENDING');
     const [head, block, code] = await Promise.all([
       rpc('eth_blockNumber', []), rpc('eth_getBlockByNumber', [receipt.blockNumber, false]), rpc('eth_getCode', [cfg.receiverAddress, receipt.blockNumber])
@@ -87,7 +87,123 @@ function createMarket(api, context) {
     try { await effect(); }
     catch (_) { error('REVIEW_REQUIRED: 처리 결과 확인이 필요합니다. 같은 작업을 다시 지급하지 않습니다.'); }
   }
+  function serviceDiagnostic(e) {
+    const body = e.response && e.response.data || {};
+    const http = Number(e.response && e.response.status || e.status);
+    const code = Number(body.code);
+    // Only service response fields; never serialize the request or Axios exception.
+    const clean = value => String(value || '').replace(/https?:\/\/\S+/gi, '[URL]')
+      .replace(/Bearer\s+\S+/gi, '[TOKEN]').replace(/eyJ[A-Za-z0-9_.-]+/g, '[TOKEN]')
+      .replace(/[\r\n]+/g, ' ').slice(0, 400);
+    const details = Array.isArray(body.details) ? body.details.slice(0, 3).map(x =>
+      typeof x === 'string' ? clean(x) : clean(x && (x.message || x.detail || x.reason))).join(' | ') : '';
+    return 'HTTP_' + (Number.isInteger(http) && http > 0 ? http : 'UNKNOWN') +
+      ':CODE_' + (Number.isInteger(code) && code > 0 ? code : 'UNKNOWN') +
+      ':' + clean(body.title) + ':' + clean(body.detail) + ':' + details +
+      (e instanceof TypeError ? ':LOCAL_TYPE_ERROR' : '');
+  }
   return {
+    async Sword_GetQuote() {
+      const cfg = await configuration();
+      capacity((await readState()).value);
+      await api.requireInventoryDefinition(playerId, 'LEGENDARY_SWORD');
+      const [chain, code] = await Promise.all([
+        api.rpc(cfg.rpcUrl, 'eth_chainId', []), api.rpc(cfg.rpcUrl, 'eth_getCode', [cfg.receiverAddress, 'latest'])
+      ]);
+      if (BigInt(chain) !== 11155111n) error('WRONG_CHAIN');
+      if (code !== '0x') error('RECEIVER_MUST_BE_EOA');
+      return { chainId: '0xaa36a7', to: cfg.receiverAddress, value: '0x5af3107a4000', data: memo('LEGENDARY-SWORD'),
+        priceEth: '0.0001', confirmations: cfg.confirmations, itemId: 'LEGENDARY_SWORD', quantity: 1 };
+    },
+    async Sword_Claim(params) {
+      if (typeof params.tx_hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(params.tx_hash)) error('INVALID_TX_HASH');
+      const txHash = params.tx_hash.toLowerCase();
+      // Separate keys preserve compatibility with the already deployed Gold_Claim.
+      const key = 'sword_' + txHash;
+      // Keep the full transaction hash in the receipt and metadata, not the instance ID.
+      const instanceId = txHash.slice(2, 34);
+      const status = p => {
+        if (p.playerId !== playerId) error('WRONG_PLAYER');
+        if (p.itemId !== 'LEGENDARY_SWORD') error('INVALID_PRODUCT');
+        return { status: p.status === 'GRANTED' ? 'GRANTED' : 'REVIEW_REQUIRED', txHash,
+          itemId: p.itemId, quantity: 1, instanceId: p.instanceId };
+      };
+      const existing = (await readState()).value.payments[key];
+      if (existing) {
+        const result = status(existing);
+        if (result.status === 'GRANTED') return result;
+        // Operator-approved recovery, confirmed never received/sold/deleted on 2026-09-16.
+        // Scope is one legacy receipt and one authenticated player, not a general retry.
+        const approved = txHash === '0x67a8736d20780e50c421f2a282b62b26e9b11eb7d4e6f440a1cb4fdc72fbbe0d' &&
+          playerId === 'py7ENhQ4WIRk8eeYVZQm3PoWP1Wq' &&
+          existing.status === 'GRANTING' && !existing.recoveryStartedAt &&
+          existing.instanceId === 'sword_' + txHash.slice(2);
+        if (approved) {
+          const cfg = await configuration();
+          const reason = await verifyPayment(cfg, txHash, 'LEGENDARY-SWORD');
+          if (reason) return { ...result, status: 'PENDING', pendingReason: reason };
+          await api.requireInventoryDefinition(playerId, 'LEGENDARY_SWORD');
+          // Fail closed on lookup failure or any existing instance.
+          if (await api.getItem(playerId, existing.instanceId) || await api.getItem(playerId, instanceId))
+            error('REVIEW_REQUIRED: RECOVERY_ITEM_ALREADY_EXISTS');
+          const won = await change(s => {
+            const p = s.payments[key];
+            if (p.status !== 'GRANTING' || p.recoveryStartedAt || p.instanceId !== existing.instanceId) return false;
+            p.legacyInstanceId = p.instanceId;
+            p.instanceId = instanceId;
+            p.recoveryStartedAt = Date.now();
+            p.recoveryReason = 'OPERATOR_CONFIRMED_NEVER_RECEIVED';
+            return true;
+          });
+          if (!won) return status((await readState()).value.payments[key]);
+          let stage = 'RECOVERY_INVENTORY_ADD';
+          try {
+            await api.addItem(playerId, 'LEGENDARY_SWORD', instanceId, { source: 'SEPOLIA_SHOP', paymentTx: txHash });
+            stage = 'RECOVERY_LEDGER_COMPLETE';
+            await change(s => { s.payments[key].status = 'GRANTED'; s.payments[key].grantedAt = Date.now(); });
+          } catch (e) {
+            const failureCode = stage + ':' + serviceDiagnostic(e);
+            try { await change(s => { s.payments[key].failureCode = failureCode; }); } catch (_) { }
+            error('REVIEW_REQUIRED: ' + failureCode);
+          }
+          return status((await readState()).value.payments[key]);
+        }
+        // Read-only: a missing item may have been sold. Never automatically re-award.
+        try {
+          const item = await api.getItem(playerId, existing.instanceId);
+          const matches = item && item.inventoryItemId === 'LEGENDARY_SWORD' &&
+            item.instanceData && item.instanceData.paymentTx === txHash;
+          result.pendingReason = matches ? 'INVENTORY_MATCH_FOUND' : item ? 'INVENTORY_METADATA_MISMATCH' : 'INVENTORY_INSTANCE_NOT_FOUND';
+        } catch (e) { result.pendingReason = 'INVENTORY_LOOKUP_FAILED:' + serviceDiagnostic(e); }
+        result.pendingReason += '; LAST=' + (existing.failureCode || 'UNKNOWN_LEGACY_FAILURE');
+        return result;
+      }
+      const cfg = await configuration();
+      const pendingReason = await verifyPayment(cfg, txHash, 'LEGENDARY-SWORD');
+      if (pendingReason) return { status: 'PENDING', txHash, itemId: 'LEGENDARY_SWORD', quantity: 1, pendingReason };
+      await api.requireInventoryDefinition(playerId, 'LEGENDARY_SWORD');
+      const reserved = await change(s => {
+        if (own(s.payments, key)) return false;
+        capacity(s);
+        s.payments[key] = { txHash, playerId, itemId: 'LEGENDARY_SWORD', instanceId, quantity: 1, status: 'GRANTING', createdAt: Date.now() };
+        return true;
+      });
+      if (!reserved) return status((await readState()).value.payments[key]);
+      // Exactly one reservation winner attempts the award. Ambiguous failures stay
+      // GRANTING; never re-add a sword that may already have been sold or consumed.
+      let stage = 'INVENTORY_ADD';
+      try {
+        await api.addItem(playerId, 'LEGENDARY_SWORD', instanceId, { source: 'SEPOLIA_SHOP', paymentTx: txHash });
+        stage = 'LEDGER_COMPLETE';
+        await change(s => { s.payments[key].status = 'GRANTED'; s.payments[key].grantedAt = Date.now(); });
+      } catch (e) {
+        // Numeric service codes only: no credentials, request config or headers.
+        const failureCode = stage + ':' + serviceDiagnostic(e);
+        try { await change(s => { s.payments[key].failureCode = failureCode; }); } catch (_) { }
+        error('REVIEW_REQUIRED: ' + failureCode);
+      }
+      return status((await readState()).value.payments[key]);
+    },
     async Gold_GetQuote() {
       const cfg = await configuration();
       capacity((await readState()).value);

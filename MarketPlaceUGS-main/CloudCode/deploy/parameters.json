@@ -1,4 +1,12 @@
 {
+  "Sword_GetQuote": [],
+  "Sword_Claim": [
+    {
+      "name": "tx_hash",
+      "type": "String",
+      "required": true
+    }
+  ],
   "Gold_GetQuote": [],
   "Gold_Claim": [
     {

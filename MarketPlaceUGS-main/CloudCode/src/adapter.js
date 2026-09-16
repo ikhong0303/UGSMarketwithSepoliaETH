@@ -18,6 +18,12 @@ function createAdapter(context) {
     return { projectId, playerId, configAssignmentHash: hashes[playerId] };
   }
   return {
+    async requireInventoryDefinition(playerId, itemId) {
+      const response = await config.getPlayerConfiguration({ projectId, playerId });
+      hashes[playerId] = response.data.metadata.configAssignmentHash;
+      if (!(response.data.results || []).some(item => item.id === itemId && item.type === 'INVENTORY_ITEM'))
+        throw new Error('SETUP_REQUIRED: LEGENDARY_SWORD Inventory Item을 같은 환경에 Publish하세요.');
+    },
     async read(key) {
       const response = await save.getCustomItems(projectId, 'simple_market', [key]);
       const item = (response.data.results || []).find(x => x.key === key);
@@ -46,8 +52,27 @@ function createAdapter(context) {
       await currency[method]({ ...await playerArgs(playerId), currencyId: 'COIN', currencyModifyBalanceRequest: { amount: Math.abs(amount) } });
     },
     async getItem(playerId, instanceId) {
-      const response = await inventory.getPlayerInventory({ ...await playerArgs(playerId), playersInventoryItemIds: [instanceId] });
-      return (response.data.results || []).find(x => x.playersInventoryItemId === instanceId);
+      const args = await playerArgs(playerId);
+      try {
+        const response = await inventory.getPlayerInventory({ ...args, playersInventoryItemIds: [instanceId] });
+        return (response.data.results || []).find(x => x.playersInventoryItemId === instanceId);
+      } catch (e) {
+        if (Number(e.response && e.response.status || e.status) !== 400) throw e;
+      }
+      // Legacy receipt IDs may be rejected as a query filter. Read pages instead.
+      // This is read-only and never interprets an incomplete scan as a missing item.
+      let after;
+      for (let page = 0; page < 20; page++) {
+        const response = await inventory.getPlayerInventory({ ...args, limit: 100, ...(after ? { after } : {}) });
+        const items = response.data.results || [];
+        const found = items.find(x => x.playersInventoryItemId === instanceId);
+        if (found) return found;
+        if (!(response.data.links && response.data.links.next)) return undefined;
+        const next = items.length && items[items.length - 1].playersInventoryItemId;
+        if (!next || next === after) throw new Error('INVENTORY_SCAN_INCOMPLETE');
+        after = next;
+      }
+      throw new Error('INVENTORY_SCAN_INCOMPLETE');
     },
     async removeItem(playerId, item) {
       await inventory.deleteInventoryItem({ ...await playerArgs(playerId), playersInventoryItemId: item.playersInventoryItemId, writeLock: item.writeLock, inventoryDeleteRequest: {} });

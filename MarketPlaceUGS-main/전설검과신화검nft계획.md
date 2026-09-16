@@ -2,11 +2,13 @@
 
 작성일: 2026-09-15
 
+> 2026-09-16 진행: 1단계 일반 전설검 구매 코드를 준비했습니다. 실제 설정 순서와 확정된 이름은 [LEGENDARY_SWORD_SETUP_KO.md](LEGENDARY_SWORD_SETUP_KO.md)를 따르세요. UGS 배포 및 실결제 검증은 남아 있습니다. 아래 신규 기능 미구현 안내는 후속 NFT 단계에 적용됩니다.
+
 ## 0. 문서의 범위와 현재 상태
 
 이 문서는 앞으로 구현할 기능의 계획입니다. 아래에 적힌 **신규 스크립트·메뉴·컴포넌트·계약 함수는 아직 구현된 것이 아닙니다.** Codex가 해당 단계의 코드를 작성하고 준비됐다고 안내한 뒤 사용자 설정을 진행합니다. 예상 이름은 구현 시 최종 이름과 연결표로 확정합니다. 제공되지 않은 코드나 함수를 직접 만들어 넣을 필요는 없습니다.
 
-현재 프로젝트는 `C:/Users/PC/Desktop/blockChianMarket/MarketPlaceUGS-main`이며, 기존 거래소를 복사한 `Assets/Scene/1.unity`를 계속 사용합니다.
+현재 프로젝트는 `C:/Users/PC/Desktop/blockChianMarket/UGSMarketwithSepoliaETH/MarketPlaceUGS-main`이며, 기존 거래소를 복사한 `Assets/Scene/1.unity`를 계속 사용합니다.
 
 현재 확인된 기능:
 
@@ -369,3 +371,4 @@ UGS에 아이템을 추가하는 기능만으로 검의 공격력·전투 효과
 - Remix: https://remix.ethereum.org
 
 이 문서는 Sepolia 학습용 구현 계획입니다. NFT 발행이 수익·현금 가치·다른 게임에서의 사용을 자동으로 보장하는 것은 아닙니다.
+

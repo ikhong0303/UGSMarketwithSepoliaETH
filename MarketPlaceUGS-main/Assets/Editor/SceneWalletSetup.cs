@@ -23,6 +23,8 @@ public static class SceneWalletSetup
         wallet.walletButton = Find<Button>(panel, "WalletButton");
         wallet.paymentCheckButton = Find<Button>(panel, "PaymentCheckButton");
         wallet.buy10000GoldButton = Find<Button>(panel, "Buy10000GoldButton");
+        wallet.buyLegendarySwordButton = Find<Button>(panel, "BuyLegendarySwordButton");
+        wallet.swordPaymentCheckButton = Find<Button>(panel, "SwordPaymentCheckButton");
         wallet.walletAddressText = Find<TMP_Text>(panel, "WalletAddressText");
         wallet.sepoliaEthText = Find<TMP_Text>(panel, "Sepolia ETH Text", "SepoliaETHText", "SepoliaEthText");
         wallet.paymentStatusText = Find<TMP_Text>(panel, "PaymentStatusText");

@@ -427,7 +427,7 @@ function createAdapter(context) {
   };
 }
 
-module.exports = async (args) => createMarket(createAdapter(args.context), args.context).Gold_Claim(args.params || {});
+module.exports = async (args) => createMarket(createAdapter(args.context), args.context).Sword_Claim(args.params || {});
 module.exports.params = {
   "tx_hash": {
     "type": "String",

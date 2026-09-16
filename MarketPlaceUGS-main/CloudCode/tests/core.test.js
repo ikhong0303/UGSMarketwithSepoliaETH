@@ -16,6 +16,10 @@ function fixture() {
   const receipt = { transactionHash: hash, status: '0x1', to: receiver, from: buyer, blockHash, blockNumber: '0x64' };
   const rpcValues = { eth_chainId: '0xaa36a7', eth_getTransactionByHash: tx, eth_getTransactionReceipt: receipt, eth_blockNumber: '0x66', eth_getBlockByNumber: { hash: blockHash }, eth_getCode: '0x' };
   const api = {
+    async requireInventoryDefinition(id, itemId) {
+      assert.equal(itemId, 'LEGENDARY_SWORD');
+      if (db.missingSword) throw new Error('SETUP_REQUIRED');
+    },
     async read(key) { return { value: clone(key === 'state' ? db.state : config), writeLock: String(db.version) }; },
     async write(key, next, lock) { if (String(db.version) !== lock) throw Object.assign(new Error('conflict'), { status: 409 }); db.state = clone(next); db.version++; },
     async rpc(url, method) { return clone(rpcValues[method]); },
@@ -145,4 +149,126 @@ test('pending diagnostics distinguish missing transaction, receipt, block and co
     assert.equal(result.pendingReason, reason);
     assert.equal(f.db.increments, 0);
   }
+});
+
+async function swordFixture() {
+  const f = fixture();
+  const quote = await f.market.Sword_GetQuote();
+  f.tx.input = quote.data;
+  return f;
+}
+test('sword quote validates configuration and binds a different product memo', async () => {
+  const f = fixture(); const q = await f.market.Sword_GetQuote();
+  assert.equal(q.itemId, 'LEGENDARY_SWORD'); assert.equal(q.quantity, 1);
+  assert.notEqual(q.data, f.tx.input); assert.equal(q.value, f.tx.value);
+  f.db.missingSword = true;
+  await assert.rejects(f.market.Sword_GetQuote(), /SETUP_REQUIRED/);
+});
+test('sword grants one inventory item without changing gold, under concurrent replay', async () => {
+  const f = await swordFixture();
+  const results = await Promise.all(Array.from({length: 8}, () => f.market.Sword_Claim({tx_hash: hash})));
+  assert(results.some(r => r.status === 'GRANTED'));
+  const r = await f.market.Sword_Claim({tx_hash: hash});
+  assert.equal(r.itemId, 'LEGENDARY_SWORD'); assert.equal(r.quantity, 1);
+  assert.equal(Object.keys(f.db.items).length, 1);
+  assert.equal(f.db.balances.player1, 1000); assert.equal(f.db.increments, 0);
+  assert.equal(f.db.items['player1:' + r.instanceId].instanceData.paymentTx, hash);
+});
+test('gold receipts cannot purchase swords and sword receipts cannot purchase gold', async () => {
+  const gold = fixture();
+  await gold.market.Gold_Claim({tx_hash: hash});
+  await assert.rejects(gold.market.Sword_Claim({tx_hash: hash}), /WRONG_PLAYER/);
+  const sword = await swordFixture();
+  await sword.market.Sword_Claim({tx_hash: hash});
+  await assert.rejects(sword.market.Gold_Claim({tx_hash: hash}), /WRONG_PLAYER/);
+  assert.equal(sword.db.increments, 0);
+});
+test('sword ownership is bound to authenticated player before and after grant', async () => {
+  const f = await swordFixture(); const other = createMarket(f.api, {...context, playerId:'player2'});
+  await assert.rejects(other.Sword_Claim({tx_hash: hash}), /WRONG_PLAYER/);
+  await f.market.Sword_Claim({tx_hash: hash});
+  await assert.rejects(other.Sword_Claim({tx_hash: hash}), /WRONG_PLAYER/);
+});
+test('pending or missing definition cannot reserve or grant a sword', async () => {
+  const f = await swordFixture(); f.rpcValues.eth_getTransactionReceipt = null;
+  assert.equal((await f.market.Sword_Claim({tx_hash:hash})).pendingReason, 'RPC_RECEIPT_NOT_FOUND');
+  assert.deepEqual(f.db.state.payments, {});
+  f.rpcValues.eth_getTransactionReceipt = f.receipt; f.db.missingSword = true;
+  await assert.rejects(f.market.Sword_Claim({tx_hash:hash}), /SETUP_REQUIRED/);
+  assert.deepEqual(f.db.state.payments, {});
+});
+test('lost sword award response is not retried, even if inventory was later sold', async () => {
+  const f = await swordFixture(); const add = f.api.addItem;
+  let calls = 0;
+  f.api.addItem = async (...args) => { calls++; await add(...args); throw new Error('lost response'); };
+  await assert.rejects(f.market.Sword_Claim({tx_hash:hash}), /REVIEW_REQUIRED/);
+  f.db.items = {};
+  assert.equal((await f.market.Sword_Claim({tx_hash:hash})).status, 'REVIEW_REQUIRED');
+  assert.equal(calls, 1);
+});
+test('granted sword receipt does not re-create a sold sword', async () => {
+  const f = await swordFixture(); await f.market.Sword_Claim({tx_hash:hash}); f.db.items = {};
+  assert.equal((await f.market.Sword_Claim({tx_hash:hash})).status, 'GRANTED');
+  assert.deepEqual(f.db.items, {});
+});
+test('sword rejects bad amount, receiver, chain and failed receipt without inventory mutation', async () => {
+  for (const mutate of [f=>f.tx.value='0x1', f=>f.tx.to=buyer, f=>f.rpcValues.eth_chainId='0x1', f=>f.receipt.status='0x0']) {
+    const f = await swordFixture(); mutate(f);
+    await assert.rejects(f.market.Sword_Claim({tx_hash:hash}));
+    assert.deepEqual(f.db.items, {}); assert.deepEqual(f.db.state.payments, {});
+  }
+});
+
+test('sword review diagnoses existing item without re-award or state transition', async () => {
+ const f = await swordFixture(); const add = f.api.addItem; let calls = 0;
+ f.api.addItem = async (...a) => { calls++; await add(...a); throw Object.assign(new Error('secret'), {response:{status:503,data:{code:123}}}); };
+ await assert.rejects(f.market.Sword_Claim({tx_hash:hash}), /INVENTORY_ADD:HTTP_503:CODE_123/);
+ const result = await f.market.Sword_Claim({tx_hash:hash});
+ assert.equal(result.status, 'REVIEW_REQUIRED');
+ assert.match(result.pendingReason, /INVENTORY_MATCH_FOUND/);
+ assert.equal(calls, 1);
+ f.db.items = {};
+ assert.match((await f.market.Sword_Claim({tx_hash:hash})).pendingReason, /INVENTORY_INSTANCE_NOT_FOUND/);
+ assert.equal(calls, 1);
+});
+
+test('review exposes lookup service validation details without request secrets', async () => {
+ const f = await swordFixture();
+ f.api.addItem = async () => { throw new Error('unknown'); };
+ await assert.rejects(f.market.Sword_Claim({tx_hash:hash}), /REVIEW_REQUIRED/);
+ f.api.getItem = async () => { throw {response:{status:400,data:{code:123,title:'Validation',detail:'Invalid instance ID',details:[{message:'ID length exceeded'}]}},config:{headers:{Authorization:'secret'}}}; };
+ const r = await f.market.Sword_Claim({tx_hash:hash});
+ assert.match(r.pendingReason, /HTTP_400:CODE_123:Validation:Invalid instance ID:ID length exceeded/);
+ assert(!r.pendingReason.includes('secret'));
+ assert.equal(r.status,'REVIEW_REQUIRED');
+});
+
+async function approvedRecoveryFixture() {
+ const f = fixture();
+ const txHash='0x67a8736d20780e50c421f2a282b62b26e9b11eb7d4e6f440a1cb4fdc72fbbe0d';
+ const playerId='py7ENhQ4WIRk8eeYVZQm3PoWP1Wq';
+ f.tx.hash=txHash;f.receipt.transactionHash=txHash;
+ f.tx.input='0x'+Buffer.from('UGS-LEGENDARY-SWORD-v1|project1|environment1|'+playerId).toString('hex');
+ f.db.state.payments['sword_'+txHash]={playerId,txHash,status:'GRANTING',itemId:'LEGENDARY_SWORD',quantity:1,instanceId:'sword_'+txHash.slice(2)};
+ f.market=createMarket(f.api,{...context,playerId});
+ return {...f,txHash,playerId};
+}
+test('approved recovery awards once under concurrency and preserves other receipts',async()=>{
+ const f=await approvedRecoveryFixture();f.db.state.payments.gold={status:'GRANTED'};
+ const results=await Promise.all(Array.from({length:8},()=>f.market.Sword_Claim({tx_hash:f.txHash})));
+ assert(results.some(r=>r.status==='GRANTED'));assert.equal(Object.keys(f.db.items).length,1);
+ assert.deepEqual(f.db.state.payments.gold,{status:'GRANTED'});
+ f.db.items={};assert.equal((await f.market.Sword_Claim({tx_hash:f.txHash})).status,'GRANTED');assert.deepEqual(f.db.items,{});
+});
+test('uncertain recovery never retries the inventory write',async()=>{
+ const f=await approvedRecoveryFixture();let calls=0;
+ f.api.addItem=async()=>{calls++;throw new Error('lost');};
+ await assert.rejects(f.market.Sword_Claim({tx_hash:f.txHash}),/REVIEW_REQUIRED/);
+ assert.equal((await f.market.Sword_Claim({tx_hash:f.txHash})).status,'REVIEW_REQUIRED');assert.equal(calls,1);
+});
+test('recovery requires valid payment and successful absence lookup',async()=>{
+ const f=await approvedRecoveryFixture();f.tx.value='0x1';
+ await assert.rejects(f.market.Sword_Claim({tx_hash:f.txHash}),/INVALID_AMOUNT/);assert.deepEqual(f.db.items,{});
+ f.tx.value='0x5af3107a4000';f.api.getItem=async()=>{throw new Error('unavailable');};
+ await assert.rejects(f.market.Sword_Claim({tx_hash:f.txHash}));assert.equal(f.db.state.payments['sword_'+f.txHash].recoveryStartedAt,undefined);
 });
