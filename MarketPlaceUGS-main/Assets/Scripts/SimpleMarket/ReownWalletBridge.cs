@@ -21,6 +21,8 @@ namespace SimpleMarket
         public string projectId = "";
         public string gameUrl = "https://example.com";
         public string iconUrl = "https://example.com/icon.png";
+        [Tooltip("Deployed MythicSwordNFT contract on Sepolia. NFT redemption is zero ETH only.")]
+        public string mythicNftContract = "";
         public event Action Changed;
         private bool sending;
         private string lastAccount = "";
@@ -77,6 +79,26 @@ namespace SimpleMarket
                 var balance = await AppKit.Evm.GetBalanceAsync(account.Address);
                 lastAccount = account.AccountId;
                 return new() { address = account.Address, chainId = "0xaa36a7", balanceEth = ((decimal)balance / 1000000000000000000m).ToString("0.######", CultureInfo.InvariantCulture) };
+            }
+            if (request.action == "nftRedeem")
+            {
+                if (sending) throw new Exception("지갑 요청을 먼저 완료하세요.");
+                if (!string.Equals(account.Address, request.from, StringComparison.OrdinalIgnoreCase) ||
+                    !Regex.IsMatch(mythicNftContract ?? "", "^0x[0-9a-fA-F]{40}$") ||
+                    !string.Equals(request.to, mythicNftContract, StringComparison.OrdinalIgnoreCase) ||
+                    request.value != "0x0" || !Regex.IsMatch(request.data ?? "", "^0xeda1122c[0-9a-fA-F]{64}$"))
+                    throw new Exception("NFT 계약 또는 쿠폰 요청을 확인하세요.");
+                sending = true;
+                try
+                {
+                    var nftTx = new Dictionary<string, object> { { "from", account.Address }, { "to", mythicNftContract },
+                        { "value", "0x0" }, { "data", request.data }, { "chainId", "0xaa36a7" } };
+                    var nftHash = await AppKit.Instance.SignClient.RequestAsync<Dictionary<string, object>[], string>(
+                        "eth_sendTransaction", new[] { nftTx }, chainId: "eip155:11155111", ct: lifetime.Token);
+                    if (!Regex.IsMatch(nftHash ?? "", "^0x[0-9a-fA-F]{64}$")) throw new Exception("거래 해시를 MetaMask에서 확인하세요.");
+                    return new() { txHash = nftHash };
+                }
+                finally { sending = false; }
             }
             if (request.action != "send") throw new Exception("지원하지 않는 지갑 요청입니다.");
             if (sending || pending != null) throw new Exception("이전 결제를 먼저 확인하세요.");
