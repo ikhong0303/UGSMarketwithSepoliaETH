@@ -64,6 +64,8 @@ public class PortfolioMarketDemo : MonoBehaviour
         await EnsureEconomyConfigSyncedAsync();
 
         await RefreshCoinsAsync();
+        var nftPanel = FindFirstObjectByType<SimpleMarket.MythicNftPanel>();
+        if (nftPanel) await nftPanel.SyncInventoryAsync();
         await RefreshInventoryAsync();
         await RefreshMarketAsync();
     }

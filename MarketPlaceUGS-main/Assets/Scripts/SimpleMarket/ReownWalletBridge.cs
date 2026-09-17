@@ -80,6 +80,22 @@ namespace SimpleMarket
                 lastAccount = account.AccountId;
                 return new() { address = account.Address, chainId = "0xaa36a7", balanceEth = ((decimal)balance / 1000000000000000000m).ToString("0.######", CultureInfo.InvariantCulture) };
             }
+            if (request.action == "nftSign")
+            {
+                if (sending) throw new Exception("지갑 요청을 먼저 완료하세요.");
+                if (!string.Equals(account.Address, request.from, StringComparison.OrdinalIgnoreCase) ||
+                    !(request.data ?? "").StartsWith("Mythic Sword NFT - Link wallet\n", StringComparison.Ordinal) || request.data.Length > 2000)
+                    throw new Exception("NFT 지갑 연결 서명 요청을 확인하세요.");
+                sending = true;
+                try
+                {
+                    var hex = "0x" + BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes(request.data)).Replace("-", "");
+                    var signature = await AppKit.Instance.SignClient.RequestAsync<string[], string>(
+                        "personal_sign", new[] { hex, account.Address }, chainId: "eip155:11155111", ct: lifetime.Token);
+                    return new() { signature = signature };
+                }
+                finally { sending = false; }
+            }
             if (request.action == "nftRedeem")
             {
                 if (sending) throw new Exception("지갑 요청을 먼저 완료하세요.");

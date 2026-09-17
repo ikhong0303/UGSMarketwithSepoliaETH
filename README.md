@@ -7,6 +7,8 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 > **실습 기준: `MarketPlaceUGS-main/Assets/Scene/1.unity`, Windows Editor Play, Reown QR + 휴대폰 MetaMask.**
 > ZIP만 받으면 클라우드 설정까지 복제되는 것은 아닙니다. 아래 순서로 UGS 프로젝트·Cloud Code·지갑 설정을 준비해야 합니다.
 
+문서 검토일: **2026-09-17**. 아래 “개발 환경에서 확인”은 제작 과정의 검증 기록이며, 학생 본인의 새 환경에서는 완료 체크를 다시 수행합니다.
+
 ## 목차
 
 - [1. 프로젝트 개요와 구현 상태](#1-프로젝트-개요와-구현-상태)
@@ -52,7 +54,7 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 
 **Sepolia ETH, 게임 COIN, NFT는 서로 다른 자산입니다.** NFT 발행 가스비는 상점 매출이 아닙니다. UGS의 `production`은 서비스 환경 이름이며 Ethereum 메인넷이라는 뜻이 아닙니다.
 
-### 1.3 현재 상태 — 2026-09-16
+### 1.3 현재 상태 — 2026-09-17
 
 | 항목 | 상태 |
 |---|---|
@@ -61,8 +63,8 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 | 전설검 결제 | 코드 포함, 기존 실패 결제 복구 지급·재로그인 유지 확인 |
 | 새 전설검 결제의 자동 지급 | 각 실습 환경에서 추가 검증 필요 |
 | NFT 계약·쿠폰·보유 조회·전송 | 코드 및 로컬 블록체인 테스트 완료 |
-| NFT Sepolia 실배포·휴대폰 쿠폰 수령 | 각 실습 환경에서 수행 필요 |
-| 로그인 시 NFT → UGS 자동 추가/삭제 | **미구현, 후속 과제** |
+| NFT Sepolia 실배포·휴대폰 쿠폰 수령 | 제작자 환경에서 사용자 완료 확인. 학생 환경은 별도 설정 필요 |
+| 로그인 시 NFT → UGS 자동 추가/삭제 | 제작자 환경에서 사용자 완료 확인. [학생 환경 설정 안내](AI_HANDOFF.md) |
 
 현재 Scene 1의 **Add Coin과 Random Item은 개발용 직접 지급 기능**입니다. Random Item은 기본 검·빨간 포션·파란 포션 중 하나를 주며 유료 가챠가 아닙니다. 별도 SimpleMarket 예제의 서버 가챠 설명과 혼동하지 마세요. 공개 상용 서비스용 권한·거래 원자성을 완성한 프로젝트는 아닙니다.
 
@@ -88,10 +90,11 @@ UGSMarketwithSepoliaETH/                 ← 저장소 최상위, 이 README
 │  ├─ CloudCode/deploy/                ← 빌드된 서버 코드
 │  ├─ CloudCode/*_COPY_ALL.txt          ← Dashboard 전체 복사용 코드
 │  └─ NFTWorkshop/                     ← NFT 계약·웹 도구·로컬 테스트
-└─ unity-blockchain-shop-prototype-main/ ← Embedded Wallet 참고 자료
+├─ archive/                             ← 이전 골드 코드 보관 (배포 금지)
+└─ AI_HANDOFF.md                        ← AI용 구조·배포·주의사항 요약
 ```
 
-`unity-blockchain-shop-prototype-main`은 Google 로그인 기반 Embedded Wallet의 별도 참고 자료입니다. 이 README를 따라 할 때 그 폴더의 Unity 버전·SDK 설치 절차를 섞지 않습니다. **MetaMask Embedded Wallets와 Reown으로 기존 휴대폰 MetaMask에 연결하는 방식은 다른 구성입니다.**
+이전 Embedded Wallet 참고 문서와 중복 안내는 저장소 밖 문서 백업에 보관했습니다. 현재 구성은 Reown으로 휴대폰 MetaMask에 연결하는 방식입니다.
 
 ### 2.2 전체 연결도
 
@@ -113,7 +116,7 @@ flowchart LR
     N --> O[지갑의 NFT 소유권]
 ```
 
-NFT 계약과 Economy 사이의 자동 동기화 선은 **아직 없습니다**.
+NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWallet → Nft_SyncInventory`로 연결합니다. 첫 지갑 서명 연결 후 로그인·Refresh에서 보유 항목을 추가하고 전송된 항목을 제거합니다. [설정 순서](AI_HANDOFF.md)를 완료해야 작동합니다.
 
 ### 2.3 주요 코드 역할
 
@@ -208,6 +211,21 @@ NFT 계약과 Economy 사이의 자동 동기화 선은 **아직 없습니다**.
 
 프로젝트 패키지에는 Reown AppKit Unity **1.7.1**, Cloud Code **2.10.2**, Cloud Save **3.4.0**, Economy **3.5.3** 등이 선언돼 있습니다. 임의로 최신 버전으로 일괄 업데이트하지 마세요. 패키지의 최종 기준은 [manifest.json](MarketPlaceUGS-main/Packages/manifest.json)과 lock 파일입니다.
 
+### 실습 전에 채워 둘 설정표
+
+| 항목 | 학생/강사가 기록할 값 | 넣는 위치 |
+|---|---|---|
+| 압축 해제한 경로 | 본인 PC의 MarketPlaceUGS-main 폴더 | Unity Hub |
+| UGS 조직·프로젝트 | 본인 또는 강사 승인 프로젝트 | Unity Project Settings → Services |
+| UGS 환경 | production | Dashboard의 모든 서비스 |
+| Reown Project ID | Reown에서 발급한 ID | WalletPanel → Reown Wallet Bridge |
+| 구매자 공개 지갑 주소 | 학생 휴대폰 MetaMask 주소 | 연결 후 화면과 비교 |
+| 상점 수신 공개 주소 | 구매용 MetaMask와 별도 지갑 | simple_market/config.receiverAddress |
+| NFT 관리자 공개 주소 | 계약 배포 지갑 | NFT 웹 도구 연결 계정 |
+| NFT 계약 주소 | 배포 후 받은 주소 | 웹 계약 칸·Mythic Nft Contract |
+
+**새 학생 환경으로 바꿀 때 위 값은 자동 생성되지 않습니다.** 제작자 PC의 경로·Project ID·수신 주소를 그대로 따라 쓰지 말고 이 표의 값과 대조합니다.
+
 ## 5. ZIP 다운로드와 Unity 실행
 
 1. 강사가 안내한 GitHub 저장소를 엽니다.
@@ -238,6 +256,8 @@ NFT 계약과 Economy 사이의 자동 동기화 선은 **아직 없습니다**.
 6. Player Authentication/Authentication에서 **Username & Password** 공급자를 활성화하고 저장합니다.
 7. Scene 1의 UGS 초기화는 기본 production 환경을 사용합니다. WalletPanel의 Environment Name만 바꾸어도 실제 UGS 환경이 바뀌는 것은 아닙니다. 다른 환경을 쓸 때는 초기화 코드와 서버 설정을 함께 맞춰야 합니다.
 8. 아래 Economy·서버 설정을 마친 후 게임 화면의 Signup으로 새 게임 계정을 만듭니다. Unity 개발자 로그인 계정과 게임 계정은 별개입니다.
+
+현재 게임의 비밀번호 검사는 **8~30자, 영문 대문자·소문자·숫자·특수문자 각 1개 이상**입니다. 실습 계정에도 다른 서비스에서 쓰는 비밀번호를 재사용하지 않습니다.
 
 [Unity Username & Password 공식 안내](https://docs.unity.com/en-us/authentication/platform-signin/username-password).
 
@@ -370,6 +390,8 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 
 서로 다른 PC의 학생끼리 거래하려면 같은 UGS 프로젝트·환경을 사용해야 합니다. 독립 프로젝트라면 자신의 환경에 게임 계정 두 개를 만들어 테스트합니다. 동시 접속이 필요하면 별도 실행 클라이언트를 준비합니다.
 
+현재 기본 로그인 화면에는 로그아웃 버튼이 없습니다. 한 PC에서 계정을 바꾸려면 **Play 종료 후 Unity Editor를 다시 열어**, 로그인 화면에서 다른 계정으로 로그인하는 방법으로 진행합니다. 기존 인증 세션이 남은 상태에서는 아이디 입력만 바꿔도 계정이 전환되지 않습니다. “이미 로그인된 상태”가 나오면 그 상태로 구매 테스트를 이어가지 마세요.
+
 ## 11. MetaMask와 Reown QR 연결
 
 ### 11.1 Reown 설정
@@ -451,11 +473,11 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 7. 전설검 1개 증가, COIN 유지, 재로그인 후 보존을 확인합니다.
 8. 인벤토리의 전설검 기본 판매가 1000 COIN은 **게임 내 재판매 가격**입니다. 0.0001 ETH 결제 가격과 다른 값입니다.
 
-아이콘·상세 UI 설정: [전설검 설정 안내](MarketPlaceUGS-main/LEGENDARY_SWORD_SETUP_KO.md).
+아이콘 매핑은 `Assets/Data/Market/GlobalItemVisuals.asset`에서 관리합니다. 코드 위치는 [AI 인수인계서](AI_HANDOFF.md)를 참고하세요.
 
 ## 13. 신화검NFT 발행과 쿠폰 실습
 
-**이 단계에서는 Cloud Save나 Economy에 NFT 항목을 추가하지 않습니다.** MetaMask 지갑에 NFT를 발행하는 실습입니다.
+이 절은 MetaMask 지갑에 NFT를 발행하는 실습입니다. 발행이 끝나면 [NFT 인벤토리 연동 안내](AI_HANDOFF.md)에서 Cloud Save/Economy 설정 및 첫 메시지 서명을 완료하여 게임 인벤토리에도 표시합니다.
 
 ### 13.1 NFT 도구 실행
 
@@ -464,12 +486,12 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 3. ZIP에는 node_modules가 없으므로 최초 한 번 다음을 실행합니다.
 
 ```powershell
-npm ci
-npm run build
-npm start
+npm.cmd ci
+npm.cmd run build
+npm.cmd start
 ```
 
-4. 이후에는 같은 폴더에서 `npm start`만 실행하면 됩니다.
+4. 이후에는 같은 폴더에서 `npm.cmd start`만 실행하면 됩니다.
 5. 터미널을 켜 둔 채 **PC Chrome**에서 `http://127.0.0.1:8787`을 엽니다.
 6. 이 주소는 내 PC 전용입니다. 휴대폰에서 이 localhost로 접속하지 않습니다.
 7. 포트를 사용 중이라면 먼저 열어둔 동일 도구가 있는지 확인합니다.
@@ -542,7 +564,7 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 5. 이전 학생이 쿠폰 상태를 확인하면 이미 발행된 tokenId와 바뀐 현재 소유자가 나옵니다.
 6. 휴대폰은 MetaMask에서 해당 NFT의 보내기 기능을 사용합니다. 앱에서 기능을 찾을 수 없으면 강사에게 확인하고 복구 구문을 다른 PC로 옮기지 않습니다.
 
-PC 웹에서 쿠폰을 사용하는 대안, 이미지 URI 준비, Remix 배포, 오류별 안내는 [신화검NFT 상세 실행 안내](MarketPlaceUGS-main/신화검NFT_발행_쿠폰_실행안내.md)에 있습니다. 그 문서의 개발자 PC 절대 경로 대신 **자신이 ZIP을 푼 경로**를 사용합니다. ZIP 사용자는 반드시 13.1의 `npm ci`부터 시작합니다.
+서버 연동 설정과 코드 위치는 [AI 인수인계서](AI_HANDOFF.md)에 요약했습니다. ZIP 사용자는 **자신이 ZIP을 푼 경로**에서 13.1의 `npm.cmd ci`부터 시작합니다.
 
 ## 14. 장애 확인 및 복구 원칙
 
@@ -571,7 +593,7 @@ PC 웹에서 쿠폰을 사용하는 대안, 이미지 URI 준비, Remix 배포, 
 6. Recovery/기록 해제는 **송금과 승인 대기 요청이 모두 없음을 확인한 미전송 건**에만 사용합니다. 환불 기능이 아닙니다.
 7. 강사에게 프로젝트·환경, 게임 Player ID, 상품, 거래 해시, Console 오류 전문을 전달합니다. 개인 키는 전달하지 않습니다.
 
-[운영·복구 참고](MarketPlaceUGS-main/CloudCode/OPERATIONS_KO.md). 과거 특정 거래의 복구 코드를 학생 결제에 임의로 재사용하지 않습니다.
+[운영·복구 참고](AI_HANDOFF.md). 과거 특정 거래의 복구 코드를 학생 결제에 임의로 재사용하지 않습니다.
 
 ## 15. 개발·검증·선택적 WebGL 빌드
 
@@ -591,9 +613,9 @@ node --test --test-isolation=none CloudCode/tests/*.test.js
 터미널 위치: `MarketPlaceUGS-main/NFTWorkshop`
 
 ```powershell
-npm ci
-npm run build
-npm test
+npm.cmd ci
+npm.cmd run build
+npm.cmd test
 ```
 
 계약은 Solidity 0.8.30, OpenZeppelin 5.4.0, optimizer runs 200, EVM Shanghai로 빌드합니다. 로컬 블록체인 테스트는 실제 Sepolia ETH를 쓰지 않습니다. Node 24에서 Ganache의 네이티브 모듈 경고 후 JavaScript 대체 구현으로 실행될 수 있으므로 최종 테스트 결과를 확인합니다.
@@ -648,23 +670,16 @@ npm test
 - [ ] NFT를 다른 지갑으로 전송하고 소유자가 바뀌는 것을 확인했다.
 - [ ] 거래 해시와 오류 대응 과정을 기록했다.
 
-### 후속 개발
+### NFT 인벤토리 연동 실습 및 후속 개발
 
-1. 서버가 발급한 일회성 메시지에 지갑 서명을 받아 실제 지갑 소유를 증명합니다.
-2. 게임 계정과 지갑 연결 정책을 정합니다. 주소 입력만으로 타인의 NFT를 사용하게 만들지 않습니다.
-3. 서버가 지정된 NFT 계약의 보유 tokenId를 조회합니다.
-4. 로그인 시 UGS 인벤토리에 NFT 사용 권한을 반영합니다.
-5. 전송 후 다음 로그인 시 연동 항목과 장착 상태를 해제합니다.
-6. RPC 장애를 보유량 0으로 취급하지 않습니다.
-7. NFT 연동 항목을 일반 COIN 거래소에서 판매하지 못하게 서버와 UI 모두 제한합니다.
+1. [NFT 인벤토리 연동 안내](AI_HANDOFF.md)에 따라 Economy에 `MYTHIC_SWORD_NFT`를 추가하고 Publish합니다.
+2. Cloud Save에 `nft_config`, `nft_state` 키를 새로 추가합니다. 기존 결제 state는 보존합니다.
+3. 안내문의 NFT Cloud Code 세 개와 기존 거래소 스크립트 두 개를 Publish합니다.
+4. 게임 로그인 후 NFT지갑연결에서 메시지 서명을 승인합니다. 한 게임 계정과 한 지갑을 연결합니다.
+5. 보유 NFT가 인벤토리에 표시되고, 재로그인·Refresh 시 중복 없이 유지되는지 확인합니다.
+6. 다른 지갑으로 전송 후 다시 동기화하여 NFT 항목만 제거되는지 확인합니다. 조회 오류일 때는 제거하지 않습니다.
+7. 현재는 인벤토리 연동까지입니다. 장착/전투 권한 검증과 운영용 Economy 접근 정책 강화는 후속 작업입니다.
 
-### 문서 우선순위
+### 문서 안내
 
-**ZIP 학생 실습은 이 README가 기준**입니다. 아래 상세 문서는 특정 단계의 화면 설명을 보충합니다. 과거 문서에 개발자 PC 절대 경로나 “아직 검증 전”이라는 당시 기록이 남아 있을 수 있습니다.
-
-- [Scene 1 지갑 상세 연결](MarketPlaceUGS-main/SCENE_1_WALLET_KO.md)
-- [전설검 상세 설정](MarketPlaceUGS-main/LEGENDARY_SWORD_SETUP_KO.md)
-- [신화검NFT 발행·쿠폰 상세 안내](MarketPlaceUGS-main/신화검NFT_발행_쿠폰_실행안내.md)
-- [전체 확장 계획](MarketPlaceUGS-main/전설검과신화검nft계획.md)
-- [서버 검증 기록](MarketPlaceUGS-main/CloudCode/VALIDATION_KO.md)
-- [별도 SimpleMarket 예제 안내](MarketPlaceUGS-main/START_HERE_KO.md) — 이 README의 Scene 1 실습과 혼합하지 않음
+학생 실습은 이 README를 기준으로 진행합니다. 구조·배포 파일·복구 주의사항은 [AI 인수인계서](AI_HANDOFF.md)에 요약했습니다. 별도 README와 이전 상세 안내 문서는 통합했습니다.

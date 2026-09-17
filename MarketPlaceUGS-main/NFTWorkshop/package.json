@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:sync": "node scripts/build-sync.mjs",
+    "test:sync": "node --test --test-isolation=none ../CloudCode/nft/tests.cjs",
     "start": "node scripts/serve.mjs",
     "test": "node --test --test-isolation=none tests/*.test.mjs"
   },
@@ -12,7 +14,8 @@
     "ethers": "6.15.0"
   },
   "devDependencies": {
-    "solc": "0.8.30",
-    "ganache": "7.9.2"
+    "esbuild": "0.25.10",
+    "ganache": "7.9.2",
+    "solc": "0.8.30"
   }
 }

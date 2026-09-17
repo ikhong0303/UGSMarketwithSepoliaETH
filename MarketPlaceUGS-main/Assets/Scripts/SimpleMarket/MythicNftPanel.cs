@@ -9,10 +9,13 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Unity.Services.Authentication;
+using Unity.Services.CloudCode;
+using System.Collections.Generic;
 
 namespace SimpleMarket
 {
-    // Issuance only. This is not server-authoritative UGS inventory synchronization.
+    // Issuance display is local; inventory changes are verified by Cloud Code.
     public sealed class MythicNftPanel : MonoBehaviour
     {
         public ReownWalletBridge wallet;
@@ -21,6 +24,36 @@ namespace SimpleMarket
         public Button connectButton, redeemButton, checkButton;
         public string rpcUrl = "https://ethereum-sepolia-rpc.publicnode.com";
         private bool busy;
+        private Task syncTask;
+        [Serializable] public class SyncReply { public string status, wallet, message; public int count, added, removed; }
+        private static string Player() => AuthenticationService.Instance.IsSignedIn ? AuthenticationService.Instance.PlayerId : "";
+        public Task SyncInventoryAsync() => syncTask != null && !syncTask.IsCompleted ? syncTask : (syncTask = SyncInventoryCore());
+        private async Task SyncInventoryCore()
+        {
+            string player = Player();
+            if (string.IsNullOrEmpty(player)) return;
+            try
+            {
+                var reply = await CloudCodeService.Instance.CallEndpointAsync<SyncReply>("Nft_SyncInventory", new Dictionary<string, object>());
+                if (!this || Player() != player) return;
+                Message(reply.status == "NOT_LINKED" ? "NFT지갑연결을 눌러 계정과 지갑을 서명으로 연결하세요." :
+                    reply.status == "PARTIAL" ? "일부 동기화 완료. 잠시 후 NFT발행확인을 다시 누르세요." :
+                    $"신화검NFT 인벤토리 동기화 완료: {reply.count}개\n추가 {reply.added}개 / 제거 {reply.removed}개");
+            }
+            catch (Exception e)
+            {
+                if (this && Player() == player) Message("NFT 동기화 실패. 잠시 후 다시 확인하세요.\n" + e.Message);
+                Debug.LogWarning("[MythicNFT Sync] " + e.Message);
+            }
+        }
+        private async Task SyncAndRefresh()
+        {
+            string player = Player();
+            await SyncInventoryAsync();
+            if (!this || Player() != player) return;
+            var market = FindFirstObjectByType<PortfolioMarketDemo>();
+            if (market) await market.RefreshInventoryAsync();
+        }
         private void Awake()
         {
             if (connectButton) connectButton.onClick.AddListener(Connect);
@@ -43,7 +76,18 @@ namespace SimpleMarket
         public void Connect() => _ = Run(async () =>
         {
             var r = await wallet.Call(new() { action = "connect", storageKey = "mythic-connect" });
-            Message("Sepolia 지갑 연결: " + r.address);
+            string player = Player();
+            if (string.IsNullOrEmpty(player)) throw new Exception("게임 계정에 먼저 로그인하세요.");
+            var challenge = await CloudCodeService.Instance.CallEndpointAsync<SyncReply>("Nft_GetChallenge", new Dictionary<string, object> { { "wallet_address", r.address } });
+            if (challenge.status == "SIGN_REQUIRED")
+            {
+                Message("MetaMask에서 계정 연결 메시지에 서명하세요. 결제나 가스비는 없습니다.");
+                var signed = await wallet.Call(new() { action = "nftSign", storageKey = "mythic-link", from = r.address, data = challenge.message });
+                if (Player() != player) throw new Exception("게임 계정이 바뀌었습니다. 다시 연결하세요.");
+                await CloudCodeService.Instance.CallEndpointAsync<SyncReply>("Nft_BindWallet", new Dictionary<string, object> { { "signature", signed.signature } });
+            }
+            if (Player() != player) return;
+            await SyncAndRefresh();
         });
         private string[] Coupon()
         {
@@ -88,20 +132,24 @@ namespace SimpleMarket
             {
                 var owner = await Rpc("eth_call", new { to = p[2], data = "0x6352211e" + s.token.ToString("x").PadLeft(64, '0') }, "latest");
                 if (!Regex.IsMatch(owner, "^0x[0-9a-fA-F]{64}$")) throw new Exception("소유자 조회 실패");
-                Message("발행 완료! 신화검NFT tokenId: " + s.token + "\n현재 소유자: 0x" + owner.Substring(26) + "\nUGS 인벤토리 동기화는 다음 단계입니다.");
+                Message("발행 완료! 신화검NFT tokenId: " + s.token + "\n현재 소유자: 0x" + owner.Substring(26));
                 return true;
             }
             Message(s.cancelled ? "취소된 쿠폰입니다." : "아직 발행되지 않았습니다. 승인 대기 거래가 있으면 기다린 뒤 다시 확인하세요.");
             return false;
         }
-        public void Check() => _ = Run(async () => { await Show(Coupon()); });
+        public void Check() => _ = Run(async () =>
+        {
+            if (couponInput && !string.IsNullOrWhiteSpace(couponInput.text)) await Show(Coupon());
+            await SyncAndRefresh();
+        });
         public void Redeem() => _ = Run(async () =>
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             throw new Exception("이번 NFT 쿠폰 UI는 Editor QR용입니다. WebGL에서는 NFT 실습 웹 화면을 사용하세요.");
 #else
             var p = Coupon();
-            if (await Show(p)) return;
+            if (await Show(p)) { await SyncAndRefresh(); return; }
             var s = await State(p);
             var account = await wallet.Call(new() { action = "status", storageKey = "mythic-connect" });
             if (!string.Equals(account.address, p[3], StringComparison.OrdinalIgnoreCase) ||

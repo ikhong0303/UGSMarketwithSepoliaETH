@@ -15,7 +15,7 @@ namespace SimpleMarket
         }
         [Serializable] public class Result
         {
-            public string id, address, chainId, balanceEth, txHash, error, status;
+            public string id, address, chainId, balanceEth, txHash, error, status, signature;
         }
         private readonly Dictionary<string, TaskCompletionSource<Result>> requests = new();
         public event Action Changed;

@@ -48,6 +48,7 @@ module.exports = async ({ params, context, logger }) => {
   if (results.length === 0) throw new Error("Item instance not found in seller inventory");
 
   const item = results[0];
+  if (item.inventoryItemId === "MYTHIC_SWORD_NFT") throw new Error("NFT_TRANSFER_IN_WALLET_ONLY");
 
   await inventoryApi.deleteInventoryItem({
     projectId,

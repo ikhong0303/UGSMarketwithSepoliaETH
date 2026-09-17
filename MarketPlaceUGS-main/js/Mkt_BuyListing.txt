@@ -33,6 +33,7 @@ module.exports = async ({ params, context, logger }) => {
   if (!listingItem.value) throw new Error("Listing not found");
 
   const listing = listingItem.value;
+  if (listing.inventoryItemId === "MYTHIC_SWORD_NFT") throw new Error("NFT_TRANSFER_IN_WALLET_ONLY");
   if (listing.status !== "ACTIVE") throw new Error("Listing not active");
   if (listing.sellerPlayerId === playerId) throw new Error("Seller cannot buy own listing");
 

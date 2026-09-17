@@ -32,7 +32,8 @@ public class InventoryRowUI : MonoBehaviour
 
         playersInventoryItemId = item.PlayersInventoryItemId;
         sellPrice = price;
-        createListingAsync = createListingFunc;
+        bool isNft = item.InventoryItemId == "MYTHIC_SWORD_NFT";
+        createListingAsync = isNft ? null : createListingFunc;
 
         if (titleText != null) {
             titleText.text = !string.IsNullOrEmpty(displayName) ? displayName : item.InventoryItemId;
@@ -44,7 +45,7 @@ public class InventoryRowUI : MonoBehaviour
         }
 
         if(priceText != null) {
-            priceText.text = $"Coin: {sellPrice.ToString()}"; 
+            priceText.text = isNft ? "NFT 보유 아이템" : $"Coin: {sellPrice.ToString()}";
         }
 
         string shortInstance = !string.IsNullOrEmpty(playersInventoryItemId) && playersInventoryItemId.Length > 8
@@ -60,7 +61,8 @@ public class InventoryRowUI : MonoBehaviour
         if (sellBtn != null)
         {
             sellBtn.onClick.RemoveAllListeners();
-            sellBtn.onClick.AddListener(() => { _ = SellAsync(); });
+            sellBtn.gameObject.SetActive(!isNft);
+            if (!isNft) sellBtn.onClick.AddListener(() => { _ = SellAsync(); });
         }
     }
 
