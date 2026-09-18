@@ -7,7 +7,21 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 > **실습 기준: `MarketPlaceUGS-main/Assets/Scene/1.unity`, Windows Editor Play, Reown QR + 휴대폰 MetaMask.**
 > ZIP만 받으면 클라우드 설정까지 복제되는 것은 아닙니다. 아래 순서로 UGS 프로젝트·Cloud Code·지갑 설정을 준비해야 합니다.
 
-문서 검토일: **2026-09-17**. 아래 “개발 환경에서 확인”은 제작 과정의 검증 기록이며, 학생 본인의 새 환경에서는 완료 체크를 다시 수행합니다.
+문서·파일 수 확인일: **2026-09-18**. 제작자 환경에서는 결제와 NFT 인벤토리 연동까지 사용자 완료 확인을 받았습니다. 학생의 새 환경에서는 아래 설정과 완료 체크를 직접 수행합니다. 이 README 하나로 처음부터 끝까지 진행할 수 있도록 구성했습니다.
+
+### 처음이라면 이 순서로 진행하세요
+
+| 단계 | 학생이 하는 일 | 완료 기준 |
+|---|---|---|
+| 1 | 1~4절: 개념·구조·준비물 확인 | 게임 계정, 지갑, 서버의 역할 구분 |
+| 2 | 5~9절: ZIP 열기, UGS 리소스와 기본 서버 9개 배포 | Scene 1 로그인과 기본 데이터 준비 |
+| 3 | 10절: 일반 아이템 거래 | 판매·구매·판매대금 수령 확인 |
+| 4 | 11~12절: Reown 지갑 연결, 테스트 ETH 결제 | 골드 10000 및 일반 전설검 지급 |
+| 5 | 13.1~13.4: NFT 계약·쿠폰·Unity 필드 준비 | 계약 주소와 학생용 쿠폰 확보 |
+| 6 | 13.5: NFT 서버 3개 배포, 지갑 서명 연결 | UGS 계정과 지갑의 1:1 연결 |
+| 7 | 13.6~13.9: NFT 수령·인벤토리·다른 학생에게 전송 | 보유 시 표시, 전송 후 제거 및 새 소유자 표시 |
+
+메뉴 이름은 Dashboard/MetaMask 버전에 따라 조금 다를 수 있습니다. 이 문서의 **리소스 ID, 함수 이름, 파일 경로, 환경 이름**을 기준으로 대조하세요.
 
 ## 목차
 
@@ -39,7 +53,26 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 4. Unity에서 QR로 외부 MetaMask 지갑 연결
 5. 테스트 ETH 입금을 서버에서 검증한 후 게임 재화 지급
 6. ERC-721 NFT 계약 배포, 지갑 지정 쿠폰 등록 및 사용
-7. 게임 데이터와 블록체인 소유권의 차이
+7. 메시지 서명으로 지갑 소유자를 확인하고 게임 계정에 연결하는 방법
+8. 서버가 NFT 보유 여부를 확인해 인벤토리를 추가·제거하는 방법
+9. 재시도·중복 지급 방지·오류 복구와 게임 데이터/블록체인 소유권의 차이
+
+이 프로젝트는 완성된 전투 RPG가 아니라 **게임 경제와 외부 지갑을 연결하는 실습용 상점**입니다. 현재 화면에서 로그인, 재화 조회, 아이템 거래, 결제, NFT 쿠폰 사용을 공부합니다. 무기 장착·공격·전투 판정은 별도 구현 과제입니다.
+
+### 알아둘 용어
+
+| 용어 | 이 프로젝트에서의 의미 |
+|---|---|
+| UGS | Unity Gaming Services. 계정·인벤토리·서버 코드를 제공하는 서비스 |
+| Player ID | 게임 로그인 계정의 고유 ID. 지갑 주소와 다름 |
+| 지갑 주소 | NFT/테스트 ETH를 받는 `0x...` 공개 주소 |
+| Sepolia | Ethereum 테스트 네트워크. 이 실습은 메인넷을 사용하지 않음 |
+| 가스비 | 블록체인에 배포·발행·전송 거래를 기록할 때 필요한 테스트 ETH 수수료 |
+| RPC | 서버가 블록체인의 거래·소유권을 읽는 통신 창구 |
+| 계약 주소 | 배포한 NFT 프로그램의 주소. 관리자 개인 지갑 주소와 다름 |
+| tokenId | **해당 계약 안에서** NFT 한 개를 구분하는 번호. 계약 주소와 함께 식별 |
+| txHash | 승인 후 전송된 거래의 식별자. 오류 확인·지급 확인에 사용 |
+| Publish | Dashboard의 수정본을 게임이 호출하는 실행 버전으로 발행 |
 
 ### 1.2 상품 세 가지의 차이
 
@@ -49,7 +82,7 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 | 획득 | 0.0001 Sepolia ETH 결제 | 0.0001 Sepolia ETH 결제 | 관리자 쿠폰 또는 관리자 직접 발행 |
 | 별도 가스비 | 있음 | 있음 | 발행·전송 시 있음 |
 | MetaMask NFT 목록 | 없음 | 없음 | 계약 주소·tokenId로 확인 가능 |
-| 게임 리소스 ID | `COIN` | `LEGENDARY_SWORD` | 향후 `MYTHIC_SWORD_NFT` 연동 예정 |
+| 게임 리소스 ID | `COIN` | `LEGENDARY_SWORD` | `MYTHIC_SWORD_NFT`로 인벤토리 연동 |
 | 지갑 간 전송 | 게임 골드 자체는 불가능 | 일반 게임 아이템 자체는 불가능 | 가능 |
 
 **Sepolia ETH, 게임 COIN, NFT는 서로 다른 자산입니다.** NFT 발행 가스비는 상점 매출이 아닙니다. UGS의 `production`은 서비스 환경 이름이며 Ethereum 메인넷이라는 뜻이 아닙니다.
@@ -64,7 +97,7 @@ Unity 6로 만든 **교육용 RPG 아이템 거래소 + Sepolia 지갑 결제 + 
 | 새 전설검 결제의 자동 지급 | 각 실습 환경에서 추가 검증 필요 |
 | NFT 계약·쿠폰·보유 조회·전송 | 코드 및 로컬 블록체인 테스트 완료 |
 | NFT Sepolia 실배포·휴대폰 쿠폰 수령 | 제작자 환경에서 사용자 완료 확인. 학생 환경은 별도 설정 필요 |
-| 로그인 시 NFT → UGS 자동 추가/삭제 | 제작자 환경에서 사용자 완료 확인. [학생 환경 설정 안내](AI_HANDOFF.md) |
+| 로그인 시 NFT → UGS 자동 추가/삭제 | 제작자 환경에서 사용자 완료 확인. 이 문서 13.5~13.9에서 설정·실습 |
 
 현재 Scene 1의 **Add Coin과 Random Item은 개발용 직접 지급 기능**입니다. Random Item은 기본 검·빨간 포션·파란 포션 중 하나를 주며 유료 가챠가 아닙니다. 별도 SimpleMarket 예제의 서버 가챠 설명과 혼동하지 마세요. 공개 상용 서비스용 권한·거래 원자성을 완성한 프로젝트는 아닙니다.
 
@@ -89,6 +122,8 @@ UGSMarketwithSepoliaETH/                 ← 저장소 최상위, 이 README
 │  ├─ CloudCode/src/                   ← 결제 및 별도 예제 서버 원본
 │  ├─ CloudCode/deploy/                ← 빌드된 서버 코드
 │  ├─ CloudCode/*_COPY_ALL.txt          ← Dashboard 전체 복사용 코드
+│  ├─ CloudCode/nft/                   ← NFT 계정 연결·인벤토리 동기화 원본
+│  ├─ CloudCode/nft/deploy/            ← NFT 함수 3개의 실행·복사용 파일
 │  └─ NFTWorkshop/                     ← NFT 계약·웹 도구·로컬 테스트
 ├─ archive/                             ← 이전 골드 코드 보관 (배포 금지)
 └─ AI_HANDOFF.md                        ← AI용 구조·배포·주의사항 요약
@@ -110,13 +145,56 @@ flowchart LR
     M --> B[Sepolia 거래]
     C --> RPC[Sepolia RPC: 거래 검증]
     RPC --> B
+    C --> NRPC[Sepolia RPC: NFT 소유권 조회]
     W[NFT 관리자 웹 화면] --> AM[관리자 MetaMask]
     AM --> N[MythicSwordNFT 계약]
     M --> N
     N --> O[지갑의 NFT 소유권]
+    NRPC --> N
 ```
 
-NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWallet → Nft_SyncInventory`로 연결합니다. 첫 지갑 서명 연결 후 로그인·Refresh에서 보유 항목을 추가하고 전송된 항목을 제거합니다. [설정 순서](AI_HANDOFF.md)를 완료해야 작동합니다.
+NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWallet → Nft_SyncInventory`로 연결합니다. 첫 지갑 서명 연결 후 로그인·Refresh에서 보유 항목을 추가하고 전송된 항목을 제거합니다. **13.5절의 서버 설정이 필요합니다.** 화면에 지갑 주소만 표시된 상태와 서버에 서명으로 연결한 상태는 다릅니다.
+
+### 스크립트는 몇 개인가
+
+2026-09-18 실제 파일 기준입니다. `.meta`, Packages/Library의 SDK 코드, node_modules, 압축 라이브러리는 아래 직접 작성·수정 대상 수에서 제외합니다. 생성된 배포 JS와 복사용 TXT는 같은 기능의 출력물이므로 기능 수에 중복 합산하지 않습니다.
+
+| 분류 | 파일 수 | 의미 |
+|---|---:|---|
+| `Assets/Scripts/MarketPlace/*.cs` | 5 | 거래소·인벤토리·아이콘 매핑·진단 |
+| `Assets/Scripts/UGSTest/*.cs` | 3 | 인증·초기화·Cloud Save 예제 |
+| `Assets/Scripts/SimpleMarket/*.cs` | 5 | 지갑·결제·NFT·별도 예제 |
+| `Assets/Editor/*.cs` | 3 | UI 연결·예제 생성 도구 |
+| 위 네 폴더 합계 | **16** | 이 수업 기능을 파악할 때 먼저 읽을 C# |
+| `Assets/Scripts/Blocks/**/*.cs` | 29 | 프로젝트에 포함된 멀티플레이/세션 관련 예제 |
+| Assets 전체 C# | **45** | 16 + 29, 모든 파일이 Scene 1의 필수 실행 코드는 아님 |
+| 서버/웹/도구 JS 계열 원본 | **20** | js의 서버 TXT 5 + CloudCode 원본·빌드·테스트 9 + NFTWorkshop 원본·도구·테스트 5 + Tools 1 |
+| WebGL 연결 `.jslib` | 1 | Unity와 브라우저 MetaMask 연결 |
+| 직접 작성한 Solidity 원본 | 1 | `NFTWorkshop/contracts/MythicSwordNFT.sol` |
+| Dashboard에 배포할 함수 | **12** | 거래소 5 + 골드/전설검 4 + NFT 3. 파일 총수와 별개 |
+
+`NFTWorkshop/MythicSwordNFT_REMIX.sol`은 원본과 의존성을 합친 생성 파일입니다. `web/ethers.min.js`는 외부 라이브러리입니다. 둘을 새로 작성한 독립 기능으로 세지 않습니다.
+
+16개 C#을 구체적으로 보면 다음과 같습니다. 모든 경로는 `MarketPlaceUGS-main/` 기준입니다.
+
+| 폴더 | 파일 | 읽을 내용 |
+|---|---|---|
+| Assets/Scripts/MarketPlace | PortfolioMarketDemo.cs | 전체 Refresh, Economy 조회, 매물 등록/구매/Claim |
+| 같은 폴더 | InventoryRowUI.cs | 인벤토리 한 줄과 NFT Sell 제한 |
+| 같은 폴더 | MarketRowUI.cs | 거래소 한 줄, Buy/cancel |
+| 같은 폴더 | ItemVisualData.cs | 리소스 ID ↔ 이름·아이콘·가격 |
+| 같은 폴더 | UgsDiagnostics.cs | 프로젝트/로그인 상태 진단 |
+| Assets/Scripts/UGSTest | UnityServiceInit.cs | UGS 초기화 |
+| 같은 폴더 | UserNamePw.cs | Signup/Login 및 로그인 후 목록 갱신 |
+| 같은 폴더 | CloudSaveTest.cs | Cloud Save 테스트 예제 |
+| Assets/Scripts/SimpleMarket | SceneWalletPanel.cs | 골드·전설검 견적/결제/확인 |
+| 같은 폴더 | ReownWalletBridge.cs | QR 세션, 송금, NFT redeem, personal_sign |
+| 같은 폴더 | WebGlWallet.cs | 브라우저 지갑 브리지 |
+| 같은 폴더 | MythicNftPanel.cs | 쿠폰 상태·NFT 연결·서버 동기화 |
+| 같은 폴더 | SimpleMarketApp.cs | 별도 자동 생성 SimpleMarket 장면용 |
+| Assets/Editor | SceneWalletSetup.cs | 기존 WalletPanel 필드 연결 |
+| 같은 폴더 | MythicNftSetup.cs | 기존 NFT 패널 필드 연결 |
+| 같은 폴더 | SimpleMarketSetup.cs | 별도 예제 생성/빌드 메뉴, Scene 1 실습에서는 사용하지 않음 |
 
 ### 2.3 주요 코드 역할
 
@@ -133,7 +211,9 @@ NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWalle
 | `CloudCode/build.js` | 공유 소스를 단독 실행 가능한 Dashboard 파일로 생성 |
 | `MythicSwordNFT.sol` | ERC-721 소유권, 쿠폰·발행·전송 규칙 |
 | `NFTWorkshop/web` | 관리자 배포·쿠폰 등록, 학생 수령·보유 조회·전송 |
-| `MythicNftPanel` | Unity QR 지갑으로 쿠폰 사용·발행 상태 조회 |
+| `MythicNftPanel` | Unity QR 쿠폰 사용·서명 연결·NFT 인벤토리 동기화 |
+| `CloudCode/nft/core.cjs` | 일회성 서명·지갑 연결·소유권 기반 추가/삭제 |
+| `CloudCode/nft/adapter.cjs` | NFT 동기화의 Cloud Save/Economy/RPC 호출 |
 
 ### 2.4 데이터 저장 위치
 
@@ -144,6 +224,8 @@ NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWalle
 | Cloud Save `market` | 기존 거래소 매물·판매 대금 | 미포함 |
 | Cloud Save `simple_market/state` | 골드·전설검 지급 상태와 거래 해시 | 미포함 |
 | Cloud Save `simple_market/config` | 수신 공개 주소·금액·RPC·확인 수 | 예시 파일만 포함 |
+| Cloud Save `simple_market/nft_config` | 조회할 NFT 계약 주소와 RPC | 학생 환경에서 생성 |
+| Cloud Save `simple_market/nft_state` | 계정↔지갑 연결, 일회성 서명 요청, 동기화 잠금 | 학생 환경에서 생성 |
 | PlayerPrefs / 브라우저 localStorage | 로컬 미확인 거래 참조 | 새 PC에 자동 이전되지 않음 |
 | Sepolia | 송금 기록, NFT 계약·소유권·쿠폰 사용 여부 | 체인에 존재, ZIP과 별개 |
 | NFT 웹 브라우저 localStorage | 최근 계약 주소·쿠폰 초안·거래 해시 | 브라우저별 별도 |
@@ -274,12 +356,15 @@ NFT 계약과 Economy 사이의 동기화는 `Nft_GetChallenge → Nft_BindWalle
 | Inventory Item | redPotion | `REDPOTION` | 기본 설정 |
 | Inventory Item | bluePotion | `BLUEPOTION` | 기본 설정 |
 | Inventory Item | 전설검 | `LEGENDARY_SWORD` | 기본 설정 |
+| Inventory Item | 신화검NFT | `MYTHIC_SWORD_NFT` | NFT 연동 전용, 일반 랜덤 지급에 넣지 않음 |
 
 4. 자동 생성된 ID가 다르면 위 표대로 고칩니다. 표시 이름보다 **ID 일치**가 중요합니다.
 5. Save 후 Configuration의 **Publish**를 완료합니다.
 6. 새 계정에서 처음 잔액을 조회하면 기본 1000 COIN을 받습니다. 로그인할 때마다 1000을 추가하는 기능이 아닙니다.
 7. 기존 계정의 잔액은 초기 잔액을 바꿔도 소급 변경되지 않습니다.
-8. 처음 아이템은 0개입니다. NFT용 `MYTHIC_SWORD_NFT` 리소스는 현재 단계에서 만들 필요 없습니다.
+8. 리소스를 등록했다고 모든 플레이어에게 아이템이 생기지는 않습니다. 새 계정은 지급 전 인벤토리가 비어 있습니다. `MYTHIC_SWORD_NFT`는 13절의 소유권 동기화 후 나타납니다.
+
+**확인:** Configuration 목록에 COIN과 아이템 5종이 있고 Publish를 완료했으면 다음으로 진행합니다. 게임의 아이콘·이름은 `Assets/Data/Market/GlobalItemVisuals.asset`의 ID 매핑을 사용합니다. 이름만 바꾸고 ID를 다르게 만들면 표시나 지급이 실패합니다.
 
 COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 구매가 실패할 수 있습니다. 테스트 중 잔액이 최대값에 가까워지면 충분한 한도로 수정하고 Publish하세요.
 
@@ -355,7 +440,7 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 6. 아래 파라미터를 설정합니다. 화면에 따라 Details 탭에 있습니다.
 7. **Save Script → Publish Version**을 누릅니다.
 8. Live 버전의 코드가 바뀌었는지 확인합니다. 저장만 해서는 게임에 적용되지 않습니다.
-9. 9개 스크립트에 대해 반복합니다.
+9. 이 단계의 9개 스크립트에 대해 반복합니다. NFT용 3개는 계약 주소를 준비한 뒤 13.5절에서 등록하여 최종 12개가 됩니다.
 
 | 함수 | 파라미터와 유형 |
 |---|---|
@@ -371,6 +456,8 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 
 이 Scene 1 경로에서는 `Mkt_Gacha`를 등록할 필요 없습니다. 코드의 context에 Project ID, Player ID, 토큰을 직접 하드코딩하지 않습니다.
 
+**Run 버튼은 Publish 대신 누르는 버튼이 아닙니다.** 직접 Run할 때는 실제 Player ID와 파라미터가 필요한 함수가 있습니다. 처음에는 Save/Publish를 완료한 뒤 게임에서 호출하여 확인하세요. Dashboard의 호출자 context와 인증 토큰 역할은 [Unity Cloud Code 문서](https://docs.unity.com/en-us/cloud-code/scripts/how-to-guides/script-structure)에 설명돼 있습니다.
+
 전설검 코드에는 개발 중 특정 플레이어·특정 거래 한 건에 한정한 과거 복구 분기가 있습니다. **학생에게 적용되는 일반 복구 함수가 아니며, 그 거래 해시나 Player ID를 학생 값으로 바꿔 사용하지 않습니다.** 학생은 새 UGS 환경과 새 결제로 실습합니다.
 
 ## 10. 기본 거래소 실습
@@ -381,7 +468,7 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 4. Refresh 후 COIN이 1000, 보유 아이템이 0개인지 확인합니다.
 5. **Random Item**을 눌러 기본 아이템을 받습니다. 현재는 무료 테스트 지급입니다.
 6. 인벤토리에서 아이템을 확인합니다.
-7. PriceInput에 양의 정수 가격을 입력하고 해당 아이템의 Sell을 누릅니다.
+7. 해당 아이템의 Sell을 누릅니다. 현재 코드는 아이템 행에 표시된 기본 COIN 가격을 사용합니다. **PriceInput 입력칸은 있지만 현재 판매 요청 가격에 연결되어 있지 않습니다.** 가격 변경 실습은 별도 코드 수정 과제입니다.
 8. 거래소 Refresh로 매물이 보이는지 확인합니다.
 9. 다른 게임 계정으로 로그인해 Buy를 누릅니다. 같은 매도 계정으로 자기 매물을 사지 않습니다.
 10. 구매자 COIN 감소와 아이템 추가를 확인합니다.
@@ -392,7 +479,29 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 
 현재 기본 로그인 화면에는 로그아웃 버튼이 없습니다. 한 PC에서 계정을 바꾸려면 **Play 종료 후 Unity Editor를 다시 열어**, 로그인 화면에서 다른 계정으로 로그인하는 방법으로 진행합니다. 기존 인증 세션이 남은 상태에서는 아이디 입력만 바꿔도 계정이 전환되지 않습니다. “이미 로그인된 상태”가 나오면 그 상태로 구매 테스트를 이어가지 마세요.
 
+로그인/Refresh는 NFT 동기화도 호출합니다. **아직 13.5절을 하지 않았다면** NFT 패널에 Script not found/NFT_CONFIG_REQUIRED가 나올 수 있습니다. 먼저 COIN·일반 인벤토리·거래소를 확인하고, NFT 관련 설정은 13.5절에서 완료합니다. 컴파일 오류나 일반 거래소 오류까지 무시하는 뜻은 아닙니다.
+
+**완료 기록:** A가 기본 검을 등록 → B가 구매 → B 인벤토리에 검 추가 → A가 Claim 후 판매대금 증가. A/B가 서로 다른 게임 계정이며 같은 UGS 환경인지 먼저 확인하세요.
+
 ## 11. MetaMask와 Reown QR 연결
+
+### 11.0 지갑과 테스트 ETH 준비
+
+1. [MetaMask 공식 사이트](https://metamask.io/)에서 휴대폰 앱과 PC 확장 설치 경로를 확인합니다. 학생 구매/수령 지갑은 휴대폰에 준비합니다.
+2. MetaMask에서 테스트 네트워크 표시를 켜고 **Sepolia**를 선택합니다. Mainnet이나 다른 테스트넷을 선택하지 않습니다.
+3. 구매자 공개 주소를 복사하고 `0x`로 시작하는 42자리 주소인지 확인합니다.
+4. 강사가 지급하거나 [Ethereum 공식 테스트 네트워크·faucet 안내](https://ethereum.org/en/developers/docs/networks/#sepolia)의 테스트 ETH 지급 서비스를 사용합니다. Faucet은 테스트 ETH를 받는 곳이며 서비스마다 제한이 다릅니다.
+5. 구매자는 상품 금액 **0.0001 ETH + 가스비**가 필요합니다. NFT 수령·전송에도 별도 가스비가 필요합니다.
+6. 관리자는 계약 배포·쿠폰 등록용 테스트 ETH를 따로 준비합니다. 계약 배포는 단순 송금보다 비용이 클 수 있으므로 MetaMask에 표시된 최대 수수료보다 잔액이 충분한지 확인합니다. 고정 가스비를 가정하지 않습니다.
+7. 구매용 지갑과 상점 수신 지갑을 구분합니다. 개인키·복구 구문 대신 **공개 주소만** 주고받습니다. Sepolia 실습에 실제 ETH 구매는 필요 없습니다.
+
+| 역할 | 사용하는 곳 | 필요한 승인 |
+|---|---|---|
+| 학생 구매/수령 지갑 | Unity QR, NFT 수령 | 결제·NFT 발행/전송은 거래 승인, 계정 연결은 메시지 서명 |
+| 상점 수신 지갑 | Cloud Save config.receiverAddress | 입금만 받는 데는 수신자의 승인 불필요 |
+| NFT 관리자 지갑 | PC NFTWorkshop 웹 | 계약 배포·쿠폰 등록 승인 |
+
+상점 수신 지갑과 NFT 관리자는 같은 별도 지갑으로 운영할 수 있습니다. 학생 수령 지갑과는 구분합니다. PC와 휴대폰 MetaMask가 자동으로 같은 계정이 되는 것은 아니므로 **주소를 비교**하세요.
 
 ### 11.1 Reown 설정
 
@@ -477,7 +586,9 @@ COIN 최대값을 10000으로 설정하면 기존 잔액에 10000을 더하는 �
 
 ## 13. 신화검NFT 발행과 쿠폰 실습
 
-이 절은 MetaMask 지갑에 NFT를 발행하는 실습입니다. 발행이 끝나면 [NFT 인벤토리 연동 안내](AI_HANDOFF.md)에서 Cloud Save/Economy 설정 및 첫 메시지 서명을 완료하여 게임 인벤토리에도 표시합니다.
+이 절에서는 **계약 배포 → 쿠폰 등록 → 게임 계정과 지갑 연결 → NFT 수령 → 인벤토리 표시 → 다른 지갑으로 전송**까지 진행합니다. 현재 NFT를 이미 받은 학생은 재발행하지 말고 13.5절의 연결·동기화만 진행합니다.
+
+NFTWorkshop은 외부 NFT 마켓 사이트가 아니라 **이 프로젝트에 포함된 실습용 발행 웹 도구**입니다. 실제 NFT 소유권은 웹 서버에 저장되지 않고 Sepolia 계약에 기록됩니다. 웹 서버를 꺼도 이미 발행한 NFT가 없어지지 않습니다.
 
 ### 13.1 NFT 도구 실행
 
@@ -496,6 +607,8 @@ npm.cmd start
 6. 이 주소는 내 PC 전용입니다. 휴대폰에서 이 localhost로 접속하지 않습니다.
 7. 포트를 사용 중이라면 먼저 열어둔 동일 도구가 있는지 확인합니다.
 
+터미널에 `Open http://127.0.0.1:8787`이 출력되고 웹 제목에 신화검NFT 발행·쿠폰 실습이 보이면 성공입니다. 종료는 터미널에서 `Ctrl+C`입니다. `npm.ps1` 실행 정책 오류가 나면 정책을 바꾸기 전에 **명령을 npm.cmd로 입력했는지** 확인하세요. `npm`/`node` 자체를 찾지 못하면 Node.js 설치 후 터미널을 새로 엽니다.
+
 ### 13.2 관리자 계약 배포
 
 1. PC MetaMask를 관리자 계정·Sepolia로 전환합니다.
@@ -508,6 +621,10 @@ npm.cmd start
 8. 배포 완료 후 화면의 **계약 주소**를 메모합니다. 관리자 개인 지갑 주소와 다릅니다.
 9. 이미 강사가 배포한 공용 NFT 계약이 있으면 새로 배포하지 않고 그 계약 주소를 사용합니다. 쿠폰 등록은 해당 관리자만 할 수 있습니다.
 
+**주의할 두 주소:** MetaMask 위쪽의 Account 주소는 관리자 지갑입니다. 배포가 끝나 웹의 “신화검NFT 계약 주소” 칸에 들어가는 주소가 계약 주소입니다. 이후 웹·Unity·Cloud Save 세 곳에 **동일한 계약 주소**를 넣습니다.
+
+MetaMask의 확인 버튼이 `경고 검토`라면 눌러 사유를 읽습니다. `자금 부족`이면 관리자 Sepolia 잔액을 보충한 뒤 재시도합니다. 버튼을 반복해서 눌러 새 배포 요청을 여러 개 만들지 않습니다. 배포 거래가 이미 전송됐다면 활동 내역에서 결과를 먼저 확인합니다.
+
 ### 13.3 학생 쿠폰 등록
 
 1. 관리자가 웹의 계약 주소를 확인합니다.
@@ -517,6 +634,8 @@ npm.cmd start
 5. **등록 상태 확인**으로 지정 주소와 등록 완료를 확인합니다.
 6. **쿠폰 복사**로 전체 문자열을 학생에게 전달합니다.
 7. 학생은 `MSW1|11155111|...` 전체를 보관합니다. 일부만 복사하거나 값을 수정하지 않습니다.
+
+쿠폰 형식은 `MSW1|체인ID|계약주소|수령주소|비밀값`입니다. 이 문자열을 학생에게 전달하는 것과 NFT 발행은 다른 단계입니다. 아직 학생이 쿠폰을 사용하지 않았다면 NFT는 없습니다. 같은 쿠폰으로 NFT를 두 개 만들 수 없고, 지정된 다른 지갑이 대신 수령할 수 없습니다.
 
 ### 13.4 Unity NFT UI 만들기와 연결
 
@@ -542,7 +661,76 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 10. Rpc Url은 Sepolia 공개 RPC 기본값으로 시작합니다.
 11. Ctrl+S로 저장합니다.
 
-### 13.5 학생의 NFT 수령
+### 13.5 NFT 인벤토리 서버 설정과 첫 지갑 서명
+
+이 단계는 **서버 설정 담당자**가 준비하고 학생은 게임에서 서명합니다. 공용 UGS 수업에서는 강사가 설정을 한 번만 수행합니다.
+
+#### A. Economy와 Cloud Save 확인
+
+1. Economy → Configuration → production에 Inventory Item **MYTHIC_SWORD_NFT**가 있는지 확인합니다. 7절에서 만들었다면 추가 생성하지 않습니다.
+2. 아직 만들지 않았다면 Add Resource → Inventory Item으로 추가하고 Save → Publish합니다.
+3. Cloud Save → **Game Data → simple_market → Default**를 엽니다. Player Data가 아닙니다.
+4. **새 키 nft_config**를 만들고 아래 값을 JSON 객체로 저장합니다. contractAddress는 13.2에서 얻은 실제 계약 주소로 교체합니다.
+
+```json
+{
+  "contractAddress": "여기를_실제_배포한_NFT_계약_0x주소로_교체",
+  "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com"
+}
+```
+
+5. **새 키 nft_state**를 만들고 신규 환경에서만 아래 값을 저장합니다.
+
+```json
+{
+  "version": 1,
+  "sequence": 0,
+  "bindings": {},
+  "wallets": {},
+  "challenges": {},
+  "leases": {}
+}
+```
+
+6. simple_market 안에 **config / state / nft_config / nft_state** 네 키가 따로 있는지 확인합니다. 기존 config/state를 NFT JSON으로 교체하지 않습니다.
+7. nft_state가 이미 있으면 위 빈 JSON을 다시 넣지 않습니다. 연결된 계정·서명 재사용 방지 기록이 들어 있습니다.
+
+#### B. Cloud Code 세 개 배포
+
+파일 경로는 저장소 최상위 기준입니다. 빌드된 복사용 파일이 포함돼 있으므로 이 단계에서 직접 코드를 작성할 필요 없습니다.
+
+| Dashboard 함수 이름 | 전체 복사할 파일 | Parameters |
+|---|---|---|
+| `Nft_GetChallenge` | [Nft_GetChallenge_COPY.txt](MarketPlaceUGS-main/CloudCode/nft/deploy/Nft_GetChallenge_COPY.txt) | `wallet_address`: String 필수 |
+| `Nft_BindWallet` | [Nft_BindWallet_COPY.txt](MarketPlaceUGS-main/CloudCode/nft/deploy/Nft_BindWallet_COPY.txt) | `signature`: String 필수 |
+| `Nft_SyncInventory` | [Nft_SyncInventory_COPY.txt](MarketPlaceUGS-main/CloudCode/nft/deploy/Nft_SyncInventory_COPY.txt) | 없음 |
+
+1. Dashboard → Cloud Code → JS Scripts에서 위 이름으로 스크립트를 생성합니다. production 환경인지 확인합니다.
+2. 파일을 메모장/VS Code로 엽니다. **파일 안에서 Ctrl+A → Ctrl+C** 합니다. GitHub 화면의 일부 코드만 선택하지 않습니다.
+3. Dashboard 코드 편집기에서 Ctrl+A → Ctrl+V로 기본 샘플을 전부 교체합니다.
+4. 첫 줄이 **NFT SYNC COPY V3**인지 확인합니다. 서명 검증 라이브러리가 들어 있어 길지만 전체가 필요합니다.
+5. 표대로 파라미터를 등록하고 **Save Script → Publish Version**을 누릅니다.
+6. 세 개 모두 Live를 확인합니다. 9절의 함수와 합쳐 총 **12개**입니다. Gold/Sword 함수를 NFT 코드로 바꾸지 않습니다.
+7. 현재 `js/Mkt_CreateListing.txt`, `js/Mkt_BuyListing.txt`에는 NFT 거래소 판매 차단이 포함돼 있습니다. 오래된 서버를 재사용했다면 최신 두 파일도 Save → Publish합니다.
+
+`||=` 구문이나 이상한 문자에 편집기 밑줄이 뜨는 과거 압축본은 사용하지 않습니다. V3는 ES2020 문법과 줄바꿈을 적용한 파일입니다. 현재 파일에서도 오류가 나면 빨간 밑줄의 설명을 확인합니다.
+
+#### C. Unity 계정과 지갑 연결
+
+1. Unity에서 NFT 패널의 Wallet이 기존 Reown Wallet Bridge를 가리키는지 확인합니다.
+2. 그 Bridge의 **Mythic Nft Contract**와 서버 **nft_config.contractAddress**가 같은지 비교합니다.
+3. Scene 저장 → Play → 본인의 **게임 계정** 로그인 순서로 진행합니다.
+4. **NFT지갑연결**을 누릅니다. 위쪽 일반 “지갑 연결”만 눌렀다면 NFT 계정 연결은 아직 안 된 것입니다.
+5. 휴대폰 MetaMask에서 **쿠폰을 받을 학생 지갑**이 선택돼 있는지 확인하고 QR 세션을 연결합니다.
+6. 처음에는 MetaMask에 **메시지 서명 요청**이 나타납니다. `Mythic Sword NFT - Link wallet`, 게임 Player ID, 지갑, 프로젝트, 계약 등의 내용이 보입니다.
+7. 내용을 확인하고 서명합니다. **이 서명은 가스비가 없고 송금이나 NFT 이동이 아닙니다.** 개인키 입력은 필요 없습니다.
+8. 서버가 서명을 검증하면 계정↔지갑 연결이 저장되고 인벤토리가 동기화됩니다.
+9. 아직 NFT를 받지 않았다면 **동기화 완료: 0개**가 정상입니다. 이미 받은 NFT가 있다면 즉시 신화검NFT가 나타날 수 있습니다.
+10. 이미 같은 계정과 지갑이 연결돼 있다면 재서명 없이 동기화됩니다. 이 경우 서명창이 안 뜨는 것이 오류는 아닙니다.
+
+**한 게임 계정 ↔ 한 지갑** 정책입니다. 같은 지갑을 여러 학생 게임 계정에 연결하거나 연결한 게임 계정을 다른 지갑으로 바꾸는 UI는 없습니다. 첫 서명 전에 게임 계정과 지갑을 반드시 대조합니다. NFT 관리자 지갑을 학생 계정에 잘못 연결하지 않습니다.
+
+### 13.6 학생의 NFT 수령
 
 1. 휴대폰 MetaMask를 쿠폰에 지정된 계정·Sepolia로 선택합니다.
 2. Unity Play → 게임 로그인 → NFT 지갑 연결을 누릅니다.
@@ -551,11 +739,33 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 5. **쿠폰으로 신화검NFT 받기**를 한 번 누릅니다.
 6. MetaMask에서 발행 가스비를 승인합니다. 상품 가격은 **0 ETH**입니다.
 7. 전송 후 **NFT 발행 확인**을 눌러 상태를 조회합니다.
-8. tokenId와 현재 소유자 주소가 표시되면 소유자가 자신의 지갑인지 확인합니다.
+8. 확인 과정에서 발행 tokenId/소유자를 조회한 뒤 서버 인벤토리 동기화 결과가 표시됩니다. 최종적으로 **신화검NFT 인벤토리 동기화 완료: 1개**와 왼쪽 인벤토리 항목을 확인합니다. tokenId와 소유자를 다시 보려면 웹의 쿠폰 상태 조회를 사용합니다.
 9. 아직 발행되지 않았다면 기다린 후 확인 버튼을 다시 누릅니다. 받기 버튼을 연속으로 누르지 않습니다.
 10. MetaMask NFT 탭에서 자동 표시가 안 되면 계약 주소와 tokenId로 가져오기를 시도합니다. 내장 SVG 이미지는 일부 지갑에서 표시되지 않을 수 있습니다.
 
-### 13.6 보유·전송 실습
+서버는 최근 블록에서 두 블록 이전의 소유권을 확인합니다. 막 발행된 거래라면 추가 블록이 쌓인 뒤 다시 **NFT발행확인** 또는 왼쪽 **Refresh**를 누릅니다. 이미 쿠폰이 사용됐으면 재발행 승인 창이 뜨지 않는 것이 정상입니다.
+
+#### PC 웹에서 받는 대안
+
+1. PC MetaMask에 **쿠폰에 지정된 학생 지갑**이 있는 경우에만 사용합니다. 관리자 지갑으로 학생 쿠폰을 받으려 하지 않습니다.
+2. 웹의 MetaMask 연결에서 학생 계정을 선택하고 Sepolia를 확인합니다.
+3. “쿠폰 전체 붙여넣기”에 전체 문자열을 넣고 **쿠폰 상태 조회**로 수령 주소를 확인합니다.
+4. 아직 미발행이면 **내 지갑으로 NFT 받기** → MetaMask에서 발행 가스비 승인.
+5. 이미 `발행 완료 tokenId: ...`이면 추가 승인이 필요 없습니다. **현재 소유자**가 학생 주소인지 확인합니다.
+6. Unity에서 같은 학생 지갑을 서명 연결하고 Refresh하면 같은 NFT가 인벤토리에 표시됩니다. 웹에서 받았다고 게임에서 또 발행하지 않습니다.
+
+### 13.7 인벤토리 유지와 중복 지급 확인
+
+1. 왼쪽에 **신화검NFT** 이름과 아이콘이 보이는지 확인합니다. 일반 **전설검**과 다른 항목입니다.
+2. 신화검NFT에는 **NFT 보유 아이템** 표시가 있고 일반 Sell 버튼이 없습니다.
+3. Refresh를 여러 번 눌러도 동일 tokenId가 여러 개 생기지 않는지 확인합니다.
+4. Play 종료 후 같은 게임 계정으로 다시 로그인합니다. 서버 연결이 저장돼 있으므로 쿠폰을 다시 붙이지 않아도 동기화됩니다.
+5. COIN과 일반 전설검이 NFT 동기화 때문에 바뀌지 않는지 확인합니다.
+6. Dashboard → Player Management → 해당 Player ID → Economy → Currencies & inventory에서도 `MYTHIC_SWORD_NFT` 항목을 확인할 수 있습니다. Purchases가 비어 있다고 미지급인 것은 아닙니다.
+
+게임 인벤토리는 NFT 원본이 아니라 **현재 NFT를 보유한 계정의 게임 내 표시 항목**입니다. 지급/삭제 동기화는 NFT를 다시 mint하거나 burn하지 않습니다.
+
+### 13.8 다른 학생에게 전송하고 자동 제거 확인
 
 1. PC MetaMask에 있는 학생 지갑을 사용하는 경우 실습 웹의 “내 NFT 목록 조회”로 tokenId를 봅니다.
 2. tokenId와 받는 학생의 공개 주소를 입력합니다.
@@ -564,7 +774,27 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 5. 이전 학생이 쿠폰 상태를 확인하면 이미 발행된 tokenId와 바뀐 현재 소유자가 나옵니다.
 6. 휴대폰은 MetaMask에서 해당 NFT의 보내기 기능을 사용합니다. 앱에서 기능을 찾을 수 없으면 강사에게 확인하고 복구 구문을 다른 PC로 옮기지 않습니다.
 
-서버 연동 설정과 코드 위치는 [AI 인수인계서](AI_HANDOFF.md)에 요약했습니다. ZIP 사용자는 **자신이 ZIP을 푼 경로**에서 13.1의 `npm.cmd ci`부터 시작합니다.
+7. 전송 거래 채굴 후 추가 블록이 쌓일 때까지 기다립니다. 바로 Refresh하면 이전 보유 상태가 잠시 남을 수 있습니다.
+8. **A 게임 계정**으로 로그인하거나 왼쪽 Refresh를 누릅니다. 신화검NFT가 사라지고 일반 전설검·포션은 남는지 확인합니다.
+9. **B 게임 계정**으로 로그인하고 B 지갑을 NFT지갑연결에서 서명 연결합니다. A와 B는 서로 다른 게임 계정과 지갑을 사용합니다.
+10. B 인벤토리에 신화검NFT가 나타나는지 확인합니다. 같은 계약/tokenId이므로 B용 새 쿠폰을 만들 필요 없습니다.
+11. 서로 다른 UGS 프로젝트를 사용한다면 각각 동일 NFT 계약을 nft_config에 등록해야 합니다. 한 프로젝트에서 여러 학생이 실습할 때는 같은 환경의 서로 다른 Player ID를 사용합니다.
+
+현재는 실시간 푸시가 아니라 **로그인/Refresh/확인 버튼에서 동기화**합니다. 접속 중 전송했다면 다음 동기화 시 반영됩니다. 장착·전투 효과의 실시간 회수는 아직 구현하지 않았습니다.
+
+### 13.9 여기까지의 성공 기준
+
+| 확인 | 기대 결과 |
+|---|---|
+| 학생 A가 지정 쿠폰 사용 | A 지갑에 NFT 1개 |
+| A 첫 지갑 서명 연결 | A 게임 인벤토리에 신화검NFT |
+| 같은 쿠폰·확인 버튼 재사용 | NFT 및 게임 항목 중복 증가 없음 |
+| A 재로그인 | 보유 중이면 유지 |
+| A → B NFT 전송 후 A 동기화 | A 게임 항목 제거 |
+| B 서명 연결·동기화 | B 게임 항목 표시 |
+| NFT 동기화 | 일반 전설검과 COIN은 유지 |
+
+여기까지 되면 **NFT 발행·쿠폰·지갑 소유 증명·게임 인벤토리 연동 실습**을 완료한 것입니다. 이후 개발을 맡는 AI용 요약은 [AI_HANDOFF.md](AI_HANDOFF.md)에 있습니다.
 
 ## 14. 장애 확인 및 복구 원칙
 
@@ -584,6 +814,21 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 | 골드 지급 실패 | COIN 최대값, 같은 환경의 리소스 Publish 확인 |
 | NFT WRONG_RECIPIENT / 주소 불일치 | 쿠폰 대상 지갑과 실제 연결 계정 확인 |
 | NFT 그림 없음 | 계약 주소·tokenId·소유권부터 확인. 이미지 미리보기는 별도 |
+| NFT_CONFIG_REQUIRED | 13.5절의 simple_market/Default/nft_config 및 RPC URL 확인 |
+| NFT_STATE_REQUIRED / NFT_STATE_INVALID | nft_state 키·JSON 구조 확인. 이미 있는 연결 기록은 지우지 않음 |
+| PUBLISH_MYTHIC_SWORD_NFT | Economy의 Inventory Item ID와 같은 환경 Publish 확인 |
+| NFT지갑연결 안내 / NOT_LINKED | 게임 로그인 후 NFT지갑연결에서 메시지 서명 완료 |
+| CHALLENGE_EXPIRED | 서명 요청 후 5분 초과. NFT지갑연결에서 새 요청을 받아 서명 |
+| WRONG_SIGNER / INVALID_SIGNATURE | 요청 당시 지갑과 서명 지갑이 같은지 확인 |
+| PLAYER_ALREADY_LINKED | 이 게임 계정에 연결했던 원래 지갑 사용. UI에서 지갑 교체는 지원하지 않음 |
+| WALLET_ALREADY_LINKED | 이 지갑을 연결했던 원래 게임 계정 사용 |
+| NFT_BUSY_RETRY | 동기화 잠금. 60초 후 확인을 다시 누름 |
+| NFT_RPC_FAILED_RETRY / CHAIN_CHANGED_RETRY | RPC 장애 또는 조회 블록 변경. 기다렸다 재시도. 이를 소유량 0으로 처리하지 않음 |
+| PARTIAL | 제한 시간 안에 일부만 반영. 확인/Refresh로 나머지 동기화 |
+| NFT_HOLDING_LIMIT_20 | 수업 구현은 지갑당 NFT 20개까지 확인. 초과 시 자동 삭제 없이 중단 |
+| INVENTORY_SCAN_INCOMPLETE | 인벤토리 전체 조회 실패 또는 조회 한도 초과. 미보유로 단정하지 않음 |
+| 동기화 완료 0개인데 NFT를 받았음 | 서버/Unity/웹 계약 주소 일치, 연결 지갑, 현재 소유자, 블록 확인 지연 점검 |
+| NFT 받기에서 승인 창이 안 뜸 | 쿠폰 상태가 이미 발행 완료인지 확인. 완료됐다면 다시 받을 필요 없음 |
 
 1. **승인한 거래가 있다면 구매 버튼부터 다시 누르지 않습니다.** 거래 해시를 먼저 보관합니다.
 2. `state`를 초기값으로 덮어쓰거나 기록을 삭제하지 않습니다.
@@ -594,6 +839,14 @@ Scene 1에 NFT 패널이 없는 배포본은 다음을 수행합니다. 이미 �
 7. 강사에게 프로젝트·환경, 게임 Player ID, 상품, 거래 해시, Console 오류 전문을 전달합니다. 개인 키는 전달하지 않습니다.
 
 [운영·복구 참고](AI_HANDOFF.md). 과거 특정 거래의 복구 코드를 학생 결제에 임의로 재사용하지 않습니다.
+
+### 오류를 강사에게 전달할 때
+
+1. **어느 버튼**을 눌렀는지 적습니다: Save/Publish/Run/구매/NFT지갑연결/쿠폰 받기/Refresh.
+2. Unity Console의 첫 오류와 상세 내용을 복사합니다. 전체 스크립트 코드만 보내는 것은 오류 메시지가 아닙니다.
+3. Dashboard 문제면 빨간 밑줄에 마우스를 올린 설명 또는 Response/Logs를 함께 기록합니다.
+4. 프로젝트·환경·게임 Player ID·계약 주소·공개 지갑 주소·tokenId/txHash를 구분해 적습니다.
+5. API 토큰·비밀번호·복구 구문은 제외합니다. 화면의 완료 문구뿐 아니라 Economy 실제 항목과 NFT 현재 소유자를 대조합니다.
 
 ## 15. 개발·검증·선택적 WebGL 빌드
 
@@ -616,11 +869,15 @@ node --test --test-isolation=none CloudCode/tests/*.test.js
 npm.cmd ci
 npm.cmd run build
 npm.cmd test
+npm.cmd run build:sync
+npm.cmd run test:sync
 ```
 
 계약은 Solidity 0.8.30, OpenZeppelin 5.4.0, optimizer runs 200, EVM Shanghai로 빌드합니다. 로컬 블록체인 테스트는 실제 Sepolia ETH를 쓰지 않습니다. Node 24에서 Ganache의 네이티브 모듈 경고 후 JavaScript 대체 구현으로 실행될 수 있으므로 최종 테스트 결과를 확인합니다.
 
-개발 환경 확인: 기존 서버/브라우저 테스트 44개 통과, NFT 계약 생명주기 테스트 통과, Unity 런타임·Editor 코드 컴파일 통과. 이것이 모든 PC의 새 ZIP 임포트나 실제 Sepolia 배포 성공을 보장하지는 않습니다.
+`build`는 NFT 계약/웹 산출물을, `build:sync`는 Cloud Code NFT 배포/복사 파일 3쌍을 만듭니다. 계약 원본을 수정했다면 이미 배포된 계약은 바뀌지 않습니다. 새 계약 배포와 주소 변경 범위를 별도로 판단해야 합니다. Cloud Code 원본을 수정했다면 재빌드 후 Dashboard Publish가 필요합니다.
+
+개발 환경 검증 기록은 **기존 서버/브라우저 44개 + NFT 동기화 10개 + 계약 생명주기 1개 = 총 55개 테스트 통과**, Unity 런타임·Editor 컴파일 통과입니다. 이번 README 정비는 문서만 변경했으며 새 학생 PC의 ZIP 임포트나 실제 UGS 설정을 대신 검증한 것은 아닙니다.
 
 ### 15.3 WebGL은 선택 실습
 
@@ -668,17 +925,26 @@ npm.cmd test
 - [ ] NFT 계약 주소와 관리자/학생 주소를 구분했다.
 - [ ] 쿠폰으로 NFT를 받고 tokenId·소유자를 확인했다.
 - [ ] NFT를 다른 지갑으로 전송하고 소유자가 바뀌는 것을 확인했다.
+- [ ] NFT지갑연결에서 메시지 서명을 완료하고 인벤토리에 신화검NFT가 나타났다.
+- [ ] 재로그인·반복 Refresh에서 NFT 항목이 중복되지 않았다.
+- [ ] NFT 전송 후 A 인벤토리에서 제거되고 B 인벤토리에 표시됐다.
 - [ ] 거래 해시와 오류 대응 과정을 기록했다.
 
-### NFT 인벤토리 연동 실습 및 후속 개발
+### 제출할 실습 결과
 
-1. [NFT 인벤토리 연동 안내](AI_HANDOFF.md)에 따라 Economy에 `MYTHIC_SWORD_NFT`를 추가하고 Publish합니다.
-2. Cloud Save에 `nft_config`, `nft_state` 키를 새로 추가합니다. 기존 결제 state는 보존합니다.
-3. 안내문의 NFT Cloud Code 세 개와 기존 거래소 스크립트 두 개를 Publish합니다.
-4. 게임 로그인 후 NFT지갑연결에서 메시지 서명을 승인합니다. 한 게임 계정과 한 지갑을 연결합니다.
-5. 보유 NFT가 인벤토리에 표시되고, 재로그인·Refresh 시 중복 없이 유지되는지 확인합니다.
-6. 다른 지갑으로 전송 후 다시 동기화하여 NFT 항목만 제거되는지 확인합니다. 조회 오류일 때는 제거하지 않습니다.
-7. 현재는 인벤토리 연동까지입니다. 장착/전투 권한 검증과 운영용 Economy 접근 정책 강화는 후속 작업입니다.
+1. 본인 UGS 프로젝트·환경, Unity 버전, 핵심 스크립트 역할을 정리합니다.
+2. 골드 구매 전/후 COIN, 전설검 지급 화면, 각 txHash를 기록합니다.
+3. NFT 계약 주소·tokenId, A/B 공개 주소, 전송 txHash를 기록합니다.
+4. A 보유 화면 → A 전송 후 제거 화면 → B 수령 후 표시 화면을 제출합니다.
+5. “왜 지갑 연결과 메시지 서명이 다른가?”, “왜 RPC 오류가 난다고 아이템을 지우면 안 되는가?”, “왜 txHash 기록을 초기화하면 안 되는가?”를 설명합니다.
+
+### 후속 개발 과제
+
+1. 로그아웃·게임 계정 전환 UI와 지갑 연결 상태 안내 개선.
+2. PriceInput을 실제 판매 가격 검증과 연결.
+3. NFT 장착/전투 권한의 서버 검증 및 접속 중 소유권 변경 대응.
+4. 운영용 Economy 직접 쓰기 차단, 거래소 동시 구매·부분 실패 복구 강화.
+5. 수업용 공유 상태 저장과 NFT 조회 개수 한도를 넘어서는 구조 설계.
 
 ### 문서 안내
 
