@@ -106,11 +106,13 @@ test('ownership scan above limit keeps existing inventory unchanged', async () =
 test('marketplace rejects NFT listing and purchase before any mutation', async () => {
   for (const name of ['Mkt_CreateListing', 'Mkt_BuyListing']) {
     const noWrite = () => { assert.fail('NFT market mutation must not run'); };
-    const item = { inventoryItemId: 'MYTHIC_SWORD_NFT', status: 'ACTIVE', sellerPlayerId: 'other' };
-    const sandbox = { module: { exports: {} }, require(name) {
+    const item = { inventoryItemId: 'MYTHIC_SWORD_NFT', playersInventoryItemId: 'instance', status: 'ACTIVE', sellerPlayerId: 'other' };
+    const sandbox = { Buffer, module: { exports: {} }, require(name) {
       if (name.includes('cloud-save')) return { DataApi: class {
-        async getCustomItems() { return { data: { results: [{ value: item }] } }; }
-        setCustomItem = noWrite;
+        async getPrivateCustomItems() { return { data: { results: [{ key: 'state', writeLock: 'lock', value: {
+          version: 2, revision: 1, players: { p1: { balance: 1000, items: { instance: item } } }, listings: { listing: item }, payments: {}, operations: {}
+        } }] } }; }
+        setPrivateCustomItem = noWrite;
       } };
       return { ConfigurationApi: class { async getPlayerConfiguration() { return { data: { metadata: { configAssignmentHash: 'hash' } } }; } },
         InventoryApi: class {
@@ -119,8 +121,8 @@ test('marketplace rejects NFT listing and purchase before any mutation', async (
         }, CurrenciesApi: class { decrementPlayerCurrencyBalance = noWrite; } };
     } };
     vm.runInNewContext(readFileSync(__dirname + '/../../js/' + name + '.txt', 'utf8'), sandbox);
-    await assert.rejects(sandbox.module.exports({ params: { listing_id: 'listing', players_inventory_item_id: 'instance', price: 1, currency_id: 'COIN' },
-      context: { projectId: 'project', playerId: 'p1' } }), /NFT_TRANSFER_IN_WALLET_ONLY/);
+    await assert.rejects(sandbox.module.exports({ params: { request_id: 'request', listing_id: 'listing', players_inventory_item_id: 'instance', price: 1, currency_id: 'COIN' },
+      context: { serviceToken: 'server', environmentId: 'production', projectId: 'project', playerId: 'p1' } }), /ITEM_NOT_TRADABLE/);
   }
 });
 test('compiled Cloud Code verifies real personal_sign without native modules/browser globals', async () => {
@@ -135,6 +137,6 @@ test('compiled Cloud Code verifies real personal_sign without native modules/bro
     throw Error('Unexpected runtime dependency: ' + name);
   } };
   vm.runInNewContext(readFileSync(__dirname + '/deploy/Nft_BindWallet.js', 'utf8'), sandbox);
-  const r = await sandbox.module.exports({ context: { playerId: 'p1', projectId: 'project', environmentId: 'production' }, params: { signature: await owner.signMessage(c.message) } });
+  const r = await sandbox.module.exports({ context: { serviceToken: 'server', playerId: 'p1', projectId: 'project', environmentId: 'production' }, params: { signature: await owner.signMessage(c.message) } });
   assert.equal(r.status, 'LINKED');
 });

@@ -1,142 +1,49 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TMPro;
-using Unity.Services.Economy;
-using Unity.Services.Economy.Model;
 using UnityEngine;
 using UnityEngine.UI;
 
-
-public class UserData
-{
-    public List<string> items = new List<string>();
-    public int coins = 0;
-}
+public class UserData { public List<string> items = new(); public int coins; }
+// Retains the old scene button entry points, now using the same server-owned ledger.
 public class CloudSaveTest : MonoBehaviour
 {
     public GameObject[] itemprefab;
     public Transform itemParent;
-    public int coins = 0;
-
-
+    public int coins;
     public Button btn_addCoin;
     public TextMeshProUGUI coinText;
-    string currencyID = "COIN";
-
-
-    
-
-    // Update is called once per frame
-    void Update()
+    public async Task LoadItem() { await GetCoin(); await LoadInventory(); }
+    private async Task GetCoin()
     {
-
+        var player = await MarketCloudClient.GetPlayer();
+        coins = (int)Math.Min(int.MaxValue, player.balance);
+        if (coinText) coinText.text = player.balance.ToString();
     }
-    public async Task LoadItem() //로그인 성공시 불림
+    private async Task LoadInventory()
     {
-        /*    var playerData = await CloudSaveService.Instance.Data.Player.LoadAsync(new HashSet<string> {
-              "price","items"});
-            if (playerData.TryGetValue("price", out var keyName))
-            {
-                Debug.Log($"keyName: {keyName.Value.GetAs<string>()}");
-                coins = System.Int32.Parse(keyName.Value.GetAs<string>());
-            }
-            if (playerData.TryGetValue("items", out var item))
-            {
-                Debug.Log($"keyName: {item.Value.GetAs<string>()}");
-                coins = System.Int32.Parse(item.Value.GetAs<string>());
-            }*/
-
-        EconomyService.Instance.PlayerBalances.BalanceUpdated += async currencyID => {
-            var playerscCoinBalance = await EconomyService.Instance.PlayerBalances.GetBalancesAsync();
-            coins = (int)playerscCoinBalance.Balances[0].Balance;
-            coinText.text = coins.ToString();
-        };//플레이어 재화 상태 변할때마다 갱신, 다른 클라이언트나 서버측에서 바뀌는게 적용되는건 아님
-        //OnEnable에서 실행시 에러나므로 로그인 후 실행이 안정?
-
-        try
-        {
-            await GetCoin();
-            await LoadInventory();
-        }
-        catch (EconomyException ex)
-        {
-            print(ex);
-        }
-
-
-
+        var player = await MarketCloudClient.GetPlayer();
+        if (itemParent) for (int i = itemParent.childCount - 1; i >= 0; i--) Destroy(itemParent.GetChild(i).gameObject);
+        foreach (var item in player.items) SpawnItem(item.InventoryItemId);
     }
-
-    //최초 코인 정보 불러오기. 이후는 BalanceUpdated에 등록한 이벤트로 자동 갱신으로 다시 쓰지않음
-    async Task GetCoin()
-    {
-        await EconomyService.Instance.Configuration.SyncConfigurationAsync();
-        CurrencyDefinition currencyDefinition = EconomyService.Instance.Configuration.GetCurrency(currencyID);
-        PlayerBalance playerscCoinBalance = await currencyDefinition.GetPlayerBalanceAsync();
-        coins = (int)playerscCoinBalance.Balance;
-        coinText.text = coins.ToString();
-    }
-
-    //최초 인벤토리 정보 불러오기
-    async Task LoadInventory()
-    {
-        //List<InventoryItemDefinition> definitions = EconomyService.Instance.Configuration.GetInventoryItems();
-        GetInventoryResult inventoryResult = await EconomyService.Instance.PlayerInventory.GetInventoryAsync();
-        List<PlayersInventoryItem> Items = inventoryResult.PlayersInventoryItems;
-        if (Items.Count > 0)
-        {
-            foreach (var item in Items)
-            {
-                SpawnItem(item.InventoryItemId);
-            }
-        }
-    }
-    
-    //코인추가 및 아이템추가 버튼용 메서드
-    public void OnAddCoin()
-    {
-        print("addcoin!");
-        AddCoin();
-    }
-    public void OnAddItem(string ID)
-    {
-        AddItem(ID);
-    }
-
-    //코인 100개 추가 비동기 메서드
+    public async void OnAddCoin() { try { await AddCoin(); } catch (Exception e) { Debug.LogWarning(e); } }
+    public async void OnAddItem(string id) { try { await AddItem(id); } catch (Exception e) { Debug.LogWarning(e); } }
     public async Task AddCoin()
     {
-        int newAmount = 100;
-
-        PlayerBalance newBalance = await EconomyService.Instance.PlayerBalances.IncrementBalanceAsync(currencyID, newAmount);
-
+        await MarketCloudClient.Mutate<object>("Mkt_GrantDemo", new() { { "kind", "coin" } });
+        await GetCoin();
     }
-
-    //아이템 추가 비동기 메서드
-    public async Task AddItem(string _ID)
+    public async Task AddItem(string id)
     {
-        try
-        {
-            PlayersInventoryItem createdInventoryItem = await EconomyService.Instance.PlayerInventory.AddInventoryItemAsync(_ID);
-            print(createdInventoryItem.InventoryItemId);
-            SpawnItem(_ID);
-        }
-        catch (EconomyException e)
-        {
-            print(e);
-        }
+        // Catalog selection is performed on the server; clients cannot mint paid/NFT items.
+        await MarketCloudClient.Mutate<object>("Mkt_GrantDemo", new() { { "kind", "item" } });
+        await LoadInventory();
     }
-
-
-    //아이템 프리팹 생성 메서드
-    void SpawnItem(string _itemname)
+    private void SpawnItem(string id)
     {
-        if (_itemname == "REDPOTION") Instantiate(itemprefab[0], itemParent);
-        else if (_itemname == "BLUEPOTION") Instantiate(itemprefab[1], itemParent);
+        int index = id == "REDPOTION" ? 0 : id == "BLUEPOTION" ? 1 : -1;
+        if (index >= 0 && itemprefab != null && index < itemprefab.Length && itemParent) Instantiate(itemprefab[index], itemParent);
     }
-
-    public async Task RemoveItem()
-    {
-
-    }
+    public Task RemoveItem() => Task.CompletedTask;
 }

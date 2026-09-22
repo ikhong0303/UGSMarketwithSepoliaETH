@@ -108,7 +108,7 @@ namespace SimpleMarket
         private static string FriendlyError(string error)
         {
             if (error.Contains("REVIEW_REQUIRED")) return "지급 결과를 관리자가 확인해야 합니다. 거래 해시를 보관하고 재결제하지 마세요.";
-            if (error.Contains("SETUP_REQUIRED")) return "Cloud Save 설정 및 Economy COIN / LEGENDARY_SWORD Publish를 확인하세요.";
+            if (error.Contains("SETUP_REQUIRED")) return "Cloud Save classroom_market의 Private state와 Cloud Code 배포를 확인하세요.";
             if (error.Contains("WRONG_PLAYER")) return "결제한 게임 계정과 상품(골드/전설검)에 맞는 확인 버튼을 사용하세요.";
             if (error.Contains("RPC_UNAVAILABLE")) return "블록체인 조회가 지연됩니다. 잠시 후 결제 확인을 누르세요.";
             if (error.Contains("INVALID_")) return "거래 정보 또는 서버 설정이 일치하지 않습니다. 수신 주소·금액·거래 해시를 확인하세요.";

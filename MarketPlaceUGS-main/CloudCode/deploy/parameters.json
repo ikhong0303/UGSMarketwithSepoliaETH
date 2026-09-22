@@ -1,4 +1,17 @@
 {
+  "Mkt_GetPlayer": [],
+  "Mkt_GrantDemo": [
+    {
+      "name": "kind",
+      "type": "String",
+      "required": true
+    },
+    {
+      "name": "request_id",
+      "type": "String",
+      "required": true
+    }
+  ],
   "Sword_GetQuote": [],
   "Sword_Claim": [
     {
@@ -42,11 +55,21 @@
       "name": "currency_id",
       "type": "String",
       "required": false
+    },
+    {
+      "name": "request_id",
+      "type": "String",
+      "required": true
     }
   ],
   "Mkt_BuyListing": [
     {
       "name": "listing_id",
+      "type": "String",
+      "required": true
+    },
+    {
+      "name": "request_id",
       "type": "String",
       "required": true
     }
@@ -56,6 +79,11 @@
       "name": "listing_id",
       "type": "String",
       "required": true
+    },
+    {
+      "name": "request_id",
+      "type": "String",
+      "required": true
     }
   ],
   "Mkt_ClaimEarnings": [
@@ -63,6 +91,11 @@
       "name": "currency_id",
       "type": "String",
       "required": false
+    },
+    {
+      "name": "request_id",
+      "type": "String",
+      "required": true
     }
   ],
   "Mkt_Gacha": [

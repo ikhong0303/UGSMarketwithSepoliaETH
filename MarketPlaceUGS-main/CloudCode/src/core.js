@@ -13,6 +13,10 @@ function createMarket(api, context) {
     if (params.currency_id && params.currency_id !== currencyId) error('INVALID_CURRENCY');
   }
   function capacity(state) {
+    if (api.grantPayment) {
+      if (Buffer.byteLength(JSON.stringify(state), 'utf8') > 3800000) error('LEDGER_FULL');
+      return;
+    }
     if (Object.keys(state.payments).length + Object.keys(state.operations).length + Object.keys(state.listings).length >= maxRecords) error('LEDGER_FULL: 관리자 확인이 필요합니다.');
   }
   async function readState() {
@@ -182,6 +186,7 @@ function createMarket(api, context) {
       const pendingReason = await verifyPayment(cfg, txHash, 'LEGENDARY-SWORD');
       if (pendingReason) return { status: 'PENDING', txHash, itemId: 'LEGENDARY_SWORD', quantity: 1, pendingReason };
       await api.requireInventoryDefinition(playerId, 'LEGENDARY_SWORD');
+      if (api.grantPayment) return api.grantPayment({ key, txHash, playerId, itemId: 'LEGENDARY_SWORD', instanceId });
       const reserved = await change(s => {
         if (own(s.payments, key)) return false;
         capacity(s);
@@ -224,6 +229,7 @@ function createMarket(api, context) {
       if (pendingReason) return { status: 'PENDING', txHash, goldAmount: 10000, pendingReason };
       // Validate Economy before reserving. A missing currency does not strand a receipt.
       await api.balance(playerId);
+      if (api.grantPayment) return api.grantPayment({ key: txHash, txHash, playerId, amount: 10000 });
       const reserved = await change(s => {
         if (own(s.payments, txHash)) return false;
         capacity(s);

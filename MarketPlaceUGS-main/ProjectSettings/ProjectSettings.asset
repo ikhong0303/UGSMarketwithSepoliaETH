@@ -566,6 +566,9 @@ PlayerSettings:
   - serializedVersion: 3
     m_BuildTarget: Android
     m_Formats: 03000000
+  - serializedVersion: 3
+    m_BuildTarget: WebGL
+    m_Formats: 05000000
   playModeTestRunnerEnabled: 0
   runPlayModeTestAsEditModeTest: 0
   actionOnDotNetUnhandledException: 1
@@ -946,10 +949,10 @@ PlayerSettings:
   captureStartupLogs: {}
   activeInputHandler: 2
   windowsGamepadBackendHint: 0
-  cloudProjectId: 793b5ca3-eebe-4d55-a0fe-862f933ffcfd
+  cloudProjectId: 733a611e-93a2-4be3-aa68-9dd3325fa879
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: multiFpsSample
+  projectName: marketPlaceSepolia
   organizationId: rhavkd33
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0

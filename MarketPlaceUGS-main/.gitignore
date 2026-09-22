@@ -35,6 +35,10 @@
 ExportedObj/
 .consulo/
 *.csproj
+!CloudCode/MarketNotifications/MarketNotifications.csproj
+CloudCode/.nuget-packages/
+CloudCode/MarketNotifications/bin/
+CloudCode/MarketNotifications/obj/
 *.unityproj
 *.sln
 *.suo

@@ -4,14 +4,12 @@ using System.Threading.Tasks;
 using TMPro;
 using Unity.Services.Authentication;
 using Unity.Services.CloudCode;
-using Unity.Services.Economy;
-using Unity.Services.Economy.Model;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class PortfolioMarketDemo : MonoBehaviour
 {
-    [Header("Economy IDs")]
+    [Header("Cloud Save Market")]
     [SerializeField] private string currencyId = "COIN";
     [SerializeField] private int defaultPrice = 100;
 
@@ -42,10 +40,15 @@ public class PortfolioMarketDemo : MonoBehaviour
     [Header("Visuals")]
     [SerializeField] private ItemVisualData itemVisuals;
 
-    private bool isEconomyConfigSynced = false;
+    private Task refreshTask;
+    private int inventoryRefreshVersion;
+    private int marketRefreshVersion;
+    private MarketLiveUpdates live;
 
     private void Start()
     {
+        live = gameObject.AddComponent<MarketLiveUpdates>();
+        live.Changed += OnMarketChanged;
         if (refreshBtn != null) refreshBtn.onClick.AddListener(() => _ = RefreshAllAsync());
         if (giveEquipmentBtn != null) giveEquipmentBtn.onClick.AddListener(() => _ = GiveRandomItemAsync());
         if (addCoinBtn != null) addCoinBtn.onClick.AddListener(() => _ = AddCoinAsync(100));
@@ -53,38 +56,20 @@ public class PortfolioMarketDemo : MonoBehaviour
         if (marketRefreshBtn != null) marketRefreshBtn.onClick.AddListener(() => _ = RefreshMarketAsync());
     }
 
-    public async Task RefreshAllAsync()
+    private void OnMarketChanged() { if (isActiveAndEnabled && (refreshTask == null || refreshTask.IsCompleted)) refreshTask = RefreshDataAsync(); }
+    private void OnDestroy() { if (live != null) live.Changed -= OnMarketChanged; }
+    public Task RefreshAllAsync()
     {
-        if (!AuthenticationService.Instance.IsSignedIn)
-        {
-            SetMessage("로그인 필요");
-            return;
-        }
-
-        await EnsureEconomyConfigSyncedAsync();
-
+        if (refreshTask != null && !refreshTask.IsCompleted) return refreshTask;
+        return refreshTask = RefreshDataAsync(true);
+    }
+    private async Task RefreshDataAsync(bool syncNft = false)
+    {
+        if (!AuthenticationService.Instance.IsSignedIn) return;
         await RefreshCoinsAsync();
-        var nftPanel = FindFirstObjectByType<SimpleMarket.MythicNftPanel>();
-        if (nftPanel) await nftPanel.SyncInventoryAsync();
+        if (syncNft) { var nft = FindFirstObjectByType<SimpleMarket.MythicNftPanel>(); if (nft) await nft.SyncInventoryAsync(); }
         await RefreshInventoryAsync();
         await RefreshMarketAsync();
-    }
-
-    private async Task EnsureEconomyConfigSyncedAsync()
-    {
-        if (isEconomyConfigSynced) return;
-
-        try
-        {
-            await EconomyService.Instance.Configuration.SyncConfigurationAsync();
-            isEconomyConfigSynced = true;
-            Debug.Log("[Economy] Configuration synced");
-        }
-        catch (Exception e)
-        {
-            Debug.LogException(e);
-            SetMessage("Economy Sync 실패 (Publish/환경/프로젝트 확인)");
-        }
     }
 
     private void SetMessage(string message)
@@ -105,75 +90,37 @@ public class PortfolioMarketDemo : MonoBehaviour
     }
 
     // -------------------------
-    // Economy: Coin
+    // Cloud Save: Coin
     // -------------------------
     public async Task RefreshCoinsAsync()
     {
-        try
-        {
-            var balances = await EconomyService.Instance.PlayerBalances.GetBalancesAsync();
-            long coin = 0;
-
-            foreach (var b in balances.Balances)
-            {
-                if (b.CurrencyId == currencyId)
-                {
-                    coin = b.Balance;
-                    break;
-                }
-            }
-
-            if (coinText != null) coinText.text = coin.ToString();
-        }
-        catch (EconomyException e)
-        {
-            Debug.LogException(e);
-            SetMessage("코인 조회 실패 (Economy Publish/환경 확인)");
-        }
+        try { var p = await MarketCloudClient.GetPlayer(); if (coinText != null) coinText.text = p.balance.ToString(); }
+        catch (Exception e) { Debug.LogWarning(e); SetMessage("코인 조회 실패: Cloud Save / Cloud Code 설정 확인"); }
     }
-
     private async Task AddCoinAsync(long amount)
     {
         try
         {
-            await EnsureEconomyConfigSyncedAsync();
-
-            int delta = ToSafeInt(amount);
-            await EconomyService.Instance.PlayerBalances.IncrementBalanceAsync(currencyId, delta);
-            await RefreshCoinsAsync();
-            SetMessage($"코인 +{amount}");
+            await MarketCloudClient.Mutate<object>("Mkt_GrantDemo", new() { { "kind", "coin" } });
+            await RefreshCoinsAsync(); SetMessage("수업용 코인 +100");
         }
-        catch (EconomyException e)
-        {
-            Debug.LogException(e);
-            SetMessage("코인 증가 실패 (Economy Publish/통화 ID 확인)");
-        }
-    }
-
-    private int ToSafeInt(long value)
-    {
-        if (value > int.MaxValue) return int.MaxValue;
-        if (value < int.MinValue) return int.MinValue;
-        return (int)value;
+        catch (Exception e) { Debug.LogWarning(e); SetMessage("지급 실패: demoEnabled 및 수업 지급 한도 확인"); }
     }
 
     // -------------------------
-    // Economy: Inventory
+    // Cloud Save: Inventory
     // -------------------------
     public async Task RefreshInventoryAsync()
     {
+        int version = ++inventoryRefreshVersion;
         try
         {
+            string playerId = AuthenticationService.Instance.PlayerId;
+            var player = await MarketCloudClient.GetPlayer();
+            if (this == null || version != inventoryRefreshVersion ||
+                !AuthenticationService.Instance.IsSignedIn || AuthenticationService.Instance.PlayerId != playerId) return;
             ClearChildren(inventoryContent);
-
-            await EnsureEconomyConfigSyncedAsync();
-            GetInventoryResult inv = await EconomyService.Instance.PlayerInventory.GetInventoryAsync();
-            List<PlayersInventoryItem> items = new(inv.PlayersInventoryItems);
-            while (inv.HasNext)
-            {
-                inv = await inv.GetNextAsync();
-                items.AddRange(inv.PlayersInventoryItems);
-            }
+            List<MarketCloudClient.Item> items = player.items;
 
             foreach (var item in items)
             {
@@ -204,10 +151,10 @@ public class PortfolioMarketDemo : MonoBehaviour
 
             SetMessage($"인벤 로드 완료: {items.Count}개");
         }
-        catch (EconomyException e)
+        catch (Exception e)
         {
             Debug.LogException(e);
-            SetMessage("인벤 조회 실패 (Economy Publish/로그인 상태 확인)");
+            SetMessage("인벤 조회 실패 (Cloud Code 배포/로그인 상태 확인)");
         }
     }
 
@@ -216,59 +163,12 @@ public class PortfolioMarketDemo : MonoBehaviour
     // -------------------------
     private async Task GiveRandomItemAsync()
     {
-        if (!AuthenticationService.Instance.IsSignedIn)
-        {
-            SetMessage("로그인 먼저");
-            return;
-        }
-
-        await EnsureEconomyConfigSyncedAsync();
-
-       
-
-        string templateId = null;
-        Debug.Log($"[GiveRandom] templateId='{templateId}'");
-
         try
         {
-            if (itemVisuals == null || itemVisuals.items == null || itemVisuals.items.Count == 0) {
-                SetMessage("오류: Item Visuals가 연결되지 않았거나 비었습니다.");
-                Debug.LogError("Inspector에서 PortfolioMarketDemo의 'Item Visuals' 필드에 ScriptableObject를 연결했는지 확인하세요.");
-                return;
-            }
-
-            SetMessage("랜덤 아이템 지급 요청 중...");
-
-            // Paid/NFT visuals must not automatically join this legacy free test pool.
-            var freeItems = itemVisuals.items.FindAll(x => x != null &&
-                (x.id == "SWORD" || x.id == "REDPOTION" || x.id == "BLUEPOTION"));
-            if (freeItems.Count == 0) { SetMessage("무료 테스트 아이템 목록이 비어 있습니다."); return; }
-            int randomIndex = UnityEngine.Random.Range(0, freeItems.Count);
-            string resourceId = freeItems[randomIndex].id;
-
-            PlayersInventoryItem item = await EconomyService.Instance.PlayerInventory.AddInventoryItemAsync(resourceId);
- 
-            SetMessage($"지급 성공: {resourceId}");
-            Debug.Log($"[GiveRandomItemAsync] {resourceId} 지급완료. InstanceID {item.PlayersInventoryItemId}");
-
+            await MarketCloudClient.Mutate<object>("Mkt_GrantDemo", new() { { "kind", "item" } });
             await RefreshInventoryAsync();
         }
-        catch (EconomyException e)
-        {
-            Debug.LogException(e);
-            SetMessage($"지급 실패: '{templateId}' (Resource ID 확인)");
-        }
-        catch (Exception e)
-        {
-            Debug.LogException(e);
-            SetMessage("지급 실패: 기타 예외");
-        }
-    }
-
-    private string PickRandomId(string[] ids)
-    {
-        int index = UnityEngine.Random.Range(0, ids.Length);
-        return (ids[index] ?? "").Trim();
+        catch (Exception e) { Debug.LogWarning(e); SetMessage("지급 실패: demoEnabled 및 수업 지급 한도 확인"); }
     }
 
     // -------------------------
@@ -278,7 +178,11 @@ public class PortfolioMarketDemo : MonoBehaviour
     {
         try
         {
-            // ★ snake_case로 변경
+            if (priceInput != null && !string.IsNullOrWhiteSpace(priceInput.text))
+            {
+                if (!int.TryParse(priceInput.text, out price) || price < 1 || price > 1000000)
+                { SetMessage("가격은 1~1,000,000 정수로 입력하세요."); return; }
+            }
             var args = new Dictionary<string, object>
             {
                 { "players_inventory_item_id", playersInventoryItemId },
@@ -286,7 +190,7 @@ public class PortfolioMarketDemo : MonoBehaviour
                 { "currency_id", currencyId }
             };
 
-            CreateListingResult res = await CloudCodeService.Instance.CallEndpointAsync<CreateListingResult>(
+            CreateListingResult res = await MarketCloudClient.Mutate<CreateListingResult>(
                 "Mkt_CreateListing",
                 args
             );
@@ -303,10 +207,10 @@ public class PortfolioMarketDemo : MonoBehaviour
 
     private async Task RefreshMarketAsync()
     {
+        int version = ++marketRefreshVersion;
         try
         {
-            ClearChildren(marketContent);
-
+            string playerId = AuthenticationService.Instance.PlayerId;
             var args = new Dictionary<string, object>
             {
                 { "limit", marketLimit },
@@ -317,6 +221,9 @@ public class PortfolioMarketDemo : MonoBehaviour
                 "Mkt_GetActiveListings",
                 args
             );
+            if (this == null || version != marketRefreshVersion ||
+                !AuthenticationService.Instance.IsSignedIn || AuthenticationService.Instance.PlayerId != playerId) return;
+            ClearChildren(marketContent);
 
             if (res.listings == null)
             {
@@ -365,7 +272,7 @@ public class PortfolioMarketDemo : MonoBehaviour
             // ★ snake_case로 변경
             var args = new Dictionary<string, object> { { "listing_id", listingId } };
 
-            BuyResult res = await CloudCodeService.Instance.CallEndpointAsync<BuyResult>(
+            BuyResult res = await MarketCloudClient.Mutate<BuyResult>(
                 "Mkt_BuyListing",
                 args
             );
@@ -387,7 +294,7 @@ public class PortfolioMarketDemo : MonoBehaviour
             // ★ snake_case로 변경
             var args = new Dictionary<string, object> { { "listing_id", listingId } };
 
-            CancelResult res = await CloudCodeService.Instance.CallEndpointAsync<CancelResult>(
+            CancelResult res = await MarketCloudClient.Mutate<CancelResult>(
                 "Mkt_CancelListing",
                 args
             );
@@ -409,7 +316,7 @@ public class PortfolioMarketDemo : MonoBehaviour
             // ★ snake_case로 변경
             var args = new Dictionary<string, object> { { "currency_id", currencyId } };
 
-            ClaimResult res = await CloudCodeService.Instance.CallEndpointAsync<ClaimResult>(
+            ClaimResult res = await MarketCloudClient.Mutate<ClaimResult>(
                 "Mkt_ClaimEarnings",
                 args
             );
@@ -430,6 +337,7 @@ public class PortfolioMarketDemo : MonoBehaviour
 
         for (int i = parent.childCount - 1; i >= 0; i--)
         {
+            parent.GetChild(i).gameObject.SetActive(false);
             Destroy(parent.GetChild(i).gameObject);
         }
     }
@@ -463,5 +371,5 @@ public class PortfolioMarketDemo : MonoBehaviour
     public class CancelResult { public bool ok; public string returnedPlayersInventoryItemId; }
 
     [Serializable]
-    public class ClaimResult { public bool ok; public int claimed; }
+    public class ClaimResult { public bool ok; public long claimed; }
 }

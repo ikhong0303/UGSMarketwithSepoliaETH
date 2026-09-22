@@ -18,6 +18,14 @@ public class UserNamePw : MonoBehaviour
     [SerializeField] private GameObject inventoryPanel;
 
     private PortfolioMarketDemo marketDemo;
+    private bool authenticating;
+
+    private void SetAuthenticating(bool value)
+    {
+        authenticating = value;
+        if (loginBtn != null) loginBtn.interactable = !value;
+        if (siginUpBtn != null) siginUpBtn.interactable = !value;
+    }
 
     private void Start()
     {
@@ -89,7 +97,8 @@ public class UserNamePw : MonoBehaviour
 
     private async Task SignUpAsync()
     {
-        if (siginUpBtn != null) siginUpBtn.interactable = false;
+        if (authenticating) return;
+        SetAuthenticating(true);
 
         string username = inputID != null ? inputID.text : "";
         string password = inputPW != null ? inputPW.text : "";
@@ -97,12 +106,13 @@ public class UserNamePw : MonoBehaviour
         if (!TryValidatePassword(password, out string error))
         {
             SetMessage(error);
-            if (siginUpBtn != null) siginUpBtn.interactable = true;
+            SetAuthenticating(false);
             return;
         }
 
         try
         {
+            await UnityServiceInit.InitializeAsync();
             if (AuthenticationService.Instance.IsSignedIn)
             {
                 SetMessage("이미 로그인됨 (회원가입 전에 SignOut 필요)");
@@ -110,7 +120,9 @@ public class UserNamePw : MonoBehaviour
             }
 
             await AuthenticationService.Instance.SignUpWithUsernamePasswordAsync(username, password);
-            SetMessage("회원가입 성공. 이제 로그인");
+            SetMessage("회원가입 및 로그인 성공");
+            SetLoggedInUI();
+            if (marketDemo != null) await marketDemo.RefreshAllAsync();
         }
         catch (AuthenticationException e)
         {
@@ -122,21 +134,28 @@ public class UserNamePw : MonoBehaviour
             Debug.LogException(e);
             SetMessage("요청 실패 (프로젝트/환경/네트워크 확인)");
         }
+        catch (System.Exception e)
+        {
+            Debug.LogException(e);
+            SetMessage("초기화 또는 화면 갱신 실패 (Console 확인)");
+        }
         finally
         {
-            if (siginUpBtn != null) siginUpBtn.interactable = true;
+            SetAuthenticating(false);
         }
     }
 
     private async Task LoginAsync()
     {
-        if (loginBtn != null) loginBtn.interactable = false;
+        if (authenticating) return;
+        SetAuthenticating(true);
 
         string username = inputID != null ? inputID.text : "";
         string password = inputPW != null ? inputPW.text : "";
 
         try
         {
+            await UnityServiceInit.InitializeAsync();
             if (AuthenticationService.Instance.IsSignedIn)
             {
                 SetMessage("이미 로그인된 상태");
@@ -164,9 +183,14 @@ public class UserNamePw : MonoBehaviour
             Debug.LogException(e);
             SetMessage("요청 실패 (프로젝트/환경/네트워크 확인)");
         }
+        catch (System.Exception e)
+        {
+            Debug.LogException(e);
+            SetMessage("초기화 또는 화면 갱신 실패 (Console 확인)");
+        }
         finally
         {
-            if (loginBtn != null) loginBtn.interactable = true;
+            SetAuthenticating(false);
         }
     }
 }

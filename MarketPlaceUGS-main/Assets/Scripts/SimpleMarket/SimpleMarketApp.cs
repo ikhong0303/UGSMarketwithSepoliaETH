@@ -6,7 +6,6 @@ using Unity.Services.Authentication;
 using Unity.Services.CloudCode;
 using Unity.Services.Core;
 using Unity.Services.Core.Environments;
-using Unity.Services.Economy;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -14,7 +13,7 @@ using UnityEngine.UI;
 
 namespace SimpleMarket
 {
-    // Uses the original project's Authentication, Economy IDs and Mkt_* endpoint contracts.
+    // Uses the original project's Authentication, Cloud Save ledger and Mkt_* endpoint contracts.
     // UI is created here so the setup requires no manual Inspector button wiring.
     public sealed class SimpleMarketApp : MonoBehaviour
     {
@@ -43,11 +42,14 @@ namespace SimpleMarket
         private async void Start()
         {
             BuildUi();
+            var live = gameObject.AddComponent<MarketLiveUpdates>();
+            live.Changed += () => { if (SignedIn && !busy) _ = Run(Refresh); };
             wallet = gameObject.AddComponent<WebGlWallet>();
             wallet.Changed += WalletChanged;
             await Run(async () =>
             {
                 var options = new InitializationOptions().SetEnvironmentName(environmentName);
+                MarketCloudClient.EnvironmentName = environmentName;
                 await UnityServices.InitializeAsync(options);
                 initialized = true;
                 AuthenticationService.Instance.Expired += SessionExpired;
@@ -83,7 +85,7 @@ namespace SimpleMarket
                 string text = e.Message;
                 if (text.Contains("REVIEW_REQUIRED")) text = "처리 결과를 관리자가 확인해야 합니다. 거래 해시를 보관하고 추가 결제하지 마세요.";
                 else if (text.Contains("INSUFFICIENT_GOLD")) text = "골드가 부족합니다.";
-                else if (text.Contains("SETUP_REQUIRED")) text = "UGS 설정이 아직 완료되지 않았습니다. 안내서의 Economy / Cloud Save / Cloud Code 단계를 확인하세요.";
+                else if (text.Contains("SETUP_REQUIRED")) text = "UGS 설정이 아직 완료되지 않았습니다. 안내서의 Cloud Save / Cloud Code 단계를 확인하세요.";
                 else if (text.Contains("LISTING_NOT_ACTIVE")) text = "이미 판매되었거나 처리 중인 상품입니다. 새로고침하세요.";
                 SetMessage(text);
             }
@@ -109,7 +111,6 @@ namespace SimpleMarket
             storageKey = Application.cloudProjectId + ":" + environmentName + ":" + AuthenticationService.Instance.PlayerId;
             loginPanel.SetActive(false); gamePanel.SetActive(true);
             playerText.text = "계정: " + user;
-            await EconomyService.Instance.Configuration.SyncConfigurationAsync();
             await Refresh(); // First balance read initializes the Dashboard's 1000 starting gold.
 #if UNITY_WEBGL && !UNITY_EDITOR
             await LoadPending();
@@ -129,7 +130,11 @@ namespace SimpleMarket
         private async Task<T> Endpoint<T>(string name, Dictionary<string, object> args = null)
         {
             RequireLogin();
-            try { return await CloudCodeService.Instance.CallEndpointAsync<T>(name, args ?? new Dictionary<string, object>()); }
+            try {
+                var payload = args ?? new Dictionary<string, object>();
+                if (name.StartsWith("Mkt_") && !name.StartsWith("Mkt_Get")) return await MarketCloudClient.Mutate<T>(name, payload);
+                return await CloudCodeService.Instance.CallEndpointAsync<T>(name, payload);
+            }
             catch (CloudCodeException e)
             {
                 // SDK 2.10.2 puts the script's error in ToString(), not Message.
@@ -143,9 +148,7 @@ namespace SimpleMarket
         {
             RequireLogin();
             await RefreshBalance();
-            var inventory = await EconomyService.Instance.PlayerInventory.GetInventoryAsync();
-            var items = new List<Unity.Services.Economy.Model.PlayersInventoryItem>(inventory.PlayersInventoryItems);
-            while (inventory.HasNext) { inventory = await inventory.GetNextAsync(); items.AddRange(inventory.PlayersInventoryItems); }
+            var items = (await MarketCloudClient.GetPlayer()).items;
             ClearRows(inventoryRows);
             inventoryTitle.text = $"보유 아이템 · {items.Count}개";
             foreach (var item in items)
@@ -154,6 +157,7 @@ namespace SimpleMarket
                 int price = mapping != null && mapping.price > 0 ? mapping.price : 100;
                 string instanceId = item.PlayersInventoryItemId;
                 var row = Row(inventoryRows, ItemName(item.InventoryItemId) + $"  ·  {price:N0}골드");
+                if (item.InventoryItemId == "MYTHIC_SWORD_NFT") continue;
                 AddButton(row, "판매 등록", () => Run(async () =>
                 {
                     await Endpoint<PortfolioMarketDemo.CreateListingResult>("Mkt_CreateListing", new() { { "players_inventory_item_id", instanceId }, { "price", price }, { "currency_id", "COIN" } });
@@ -179,9 +183,8 @@ namespace SimpleMarket
         }
         private async Task RefreshBalance()
         {
-            var result = await EconomyService.Instance.PlayerBalances.GetBalancesAsync();
-            foreach (var item in result.Balances) if (item.CurrencyId == "COIN") { balanceText.text = $"골드  {item.Balance:N0}"; return; }
-            throw new Exception("SETUP_REQUIRED: COIN 통화가 없습니다.");
+            var player = await MarketCloudClient.GetPlayer();
+            balanceText.text = $"골드  {player.balance:N0}";
         }
         private async Task Connect()
         {

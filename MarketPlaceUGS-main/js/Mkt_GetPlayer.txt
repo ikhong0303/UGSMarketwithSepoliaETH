@@ -589,5 +589,5 @@ function createCloudMarket(api, context) {
 }
 if (typeof module !== 'undefined') module.exports = { createCloudMarket };
 
-module.exports = async (args) => createCloudMarket(createCloudAdapter(args.context), args.context).Sword_GetQuote(args.params || {});
+module.exports = async (args) => createCloudMarket(createCloudAdapter(args.context), args.context).Mkt_GetPlayer(args.params || {});
 module.exports.params = {};

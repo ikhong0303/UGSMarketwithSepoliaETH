@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TMPro;
-using Unity.Services.Economy.Model;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -20,7 +19,7 @@ public class InventoryRowUI : MonoBehaviour
     private Func<string, int, Task> createListingAsync;
 
     public void Bind(
-        PlayersInventoryItem item,
+        MarketCloudClient.Item item,
         string displayName,
         Sprite icon,
         int price,
