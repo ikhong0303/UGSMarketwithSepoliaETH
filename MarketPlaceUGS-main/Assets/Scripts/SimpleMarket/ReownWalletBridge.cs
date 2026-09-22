@@ -62,10 +62,19 @@ namespace SimpleMarket
                 {
                     AppKit.OpenModal();
                     var deadline = DateTime.UtcNow.AddMinutes(3);
+                    DateTime? modalClosedAt = null;
                     while (!AppKit.IsAccountConnected)
                     {
                         await Task.Delay(250, lifetime.Token);
-                        if (!AppKit.IsModalOpen) throw new Exception("지갑 연결 창을 닫았습니다.");
+                        if (AppKit.IsAccountConnected) break;
+                        // Approval can close the modal before the account state is updated.
+                        if (AppKit.IsModalOpen) modalClosedAt = null;
+                        else
+                        {
+                            modalClosedAt ??= DateTime.UtcNow;
+                            if (DateTime.UtcNow - modalClosedAt.Value >= TimeSpan.FromSeconds(3))
+                                throw new Exception("지갑 연결 창이 닫혔습니다. MetaMask에서 승인했다면 지갑 연결을 다시 눌러주세요.");
+                        }
                         if (DateTime.UtcNow > deadline) { AppKit.CloseModal(); throw new Exception("QR 연결 대기 시간이 지났습니다. 다시 연결하세요."); }
                     }
                 }

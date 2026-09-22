@@ -349,7 +349,7 @@ public class PortfolioMarketDemo : MonoBehaviour
     public class CreateListingResult { public string listingId; }
 
     [Serializable]
-    public class MarketListResult { public ListingDto[] listings; }
+    public class MarketListResult { public long revision; public ListingDto[] listings; }
 
     [Serializable]
     public class ListingDto

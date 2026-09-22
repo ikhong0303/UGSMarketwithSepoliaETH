@@ -11,7 +11,12 @@ function parse(text) {
 }
 async function session() {
  if(!window.ethereum)throw Error('PC Chrome의 MetaMask 확장 프로그램이 필요합니다.');
- if(await window.ethereum.request({method:'eth_chainId'})!=='0xaa36a7')throw Error('MetaMask 네트워크를 Sepolia로 바꾸세요.');
+ let chain=await window.ethereum.request({method:'eth_chainId'});
+ if(BigInt(chain)!==11155111n) {
+  await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:'0xaa36a7'}]});
+  chain=await window.ethereum.request({method:'eth_chainId'});
+  if(BigInt(chain)!==11155111n)throw Error('웹사이트 연결 네트워크가 Sepolia로 변경되지 않았습니다. 현재 chainId: '+chain);
+ }
  provider=new BrowserProvider(window.ethereum);
  signer=await provider.getSigner();
  $('account').textContent='Sepolia / '+await signer.getAddress();
