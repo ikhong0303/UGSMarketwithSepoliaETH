@@ -22885,7 +22885,7 @@ MonoBehaviour:
   projectId: d63d5af0be902bf4bcabe0965a093dd2
   gameUrl: https://github.com/ikhong0303/MarketPlaceUGS
   iconUrl: https://www.mbccomputer.co.kr/up/campus/normal-logo/2024/04/20240418121349273555.png
-  mythicNftContract: 0xd80054858B4116A15977B9DA5e27C507d1381A6e
+  mythicNftContract: 0x313277E5F206b3056e3c84a4d68EEF5b46DAFB3B
 --- !u!114 &2007362162
 MonoBehaviour:
   m_ObjectHideFlags: 0
