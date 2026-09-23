@@ -24,6 +24,16 @@ namespace SimpleMarket
         public Button connectButton, redeemButton, checkButton;
         public string rpcUrl = "https://ethereum-sepolia-rpc.publicnode.com";
         private bool busy;
+        private WebGlWallet browser;
+        private Task<WebGlWallet.Result> Wallet(WebGlWallet.Request request)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (!browser) browser = GetComponent<WebGlWallet>() ?? gameObject.AddComponent<WebGlWallet>();
+            return browser.Call(request);
+#else
+            return wallet.Call(request);
+#endif
+        }
         private Task syncTask;
         [Serializable] public class SyncReply { public string status, wallet, message; public int count, added, removed; }
         private static string Player() => AuthenticationService.Instance.IsSignedIn ? AuthenticationService.Instance.PlayerId : "";
@@ -75,14 +85,14 @@ namespace SimpleMarket
         }
         public void Connect() => _ = Run(async () =>
         {
-            var r = await wallet.Call(new() { action = "connect", storageKey = "mythic-connect" });
+            var r = await Wallet(new() { action = "connect", storageKey = "mythic-connect" });
             string player = Player();
             if (string.IsNullOrEmpty(player)) throw new Exception("게임 계정에 먼저 로그인하세요.");
             var challenge = await CloudCodeService.Instance.CallEndpointAsync<SyncReply>("Nft_GetChallenge", new Dictionary<string, object> { { "wallet_address", r.address } });
             if (challenge.status == "SIGN_REQUIRED")
             {
                 Message("MetaMask에서 계정 연결 메시지에 서명하세요. 결제나 가스비는 없습니다.");
-                var signed = await wallet.Call(new() { action = "nftSign", storageKey = "mythic-link", from = r.address, data = challenge.message });
+                var signed = await Wallet(new() { action = "nftSign", storageKey = "mythic-link", from = r.address, data = challenge.message });
                 if (Player() != player) throw new Exception("게임 계정이 바뀌었습니다. 다시 연결하세요.");
                 await CloudCodeService.Instance.CallEndpointAsync<SyncReply>("Nft_BindWallet", new Dictionary<string, object> { { "signature", signed.signature } });
             }
@@ -145,22 +155,19 @@ namespace SimpleMarket
         });
         public void Redeem() => _ = Run(async () =>
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            throw new Exception("이번 NFT 쿠폰 UI는 Editor QR용입니다. WebGL에서는 NFT 실습 웹 화면을 사용하세요.");
-#else
             var p = Coupon();
             if (await Show(p)) { await SyncAndRefresh(); return; }
             var s = await State(p);
-            var account = await wallet.Call(new() { action = "status", storageKey = "mythic-connect" });
+            var account = await Wallet(new() { action = "connect", storageKey = "mythic-connect" });
             if (!string.Equals(account.address, p[3], StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(account.address, s.recipient, StringComparison.OrdinalIgnoreCase))
                 throw new Exception("쿠폰 수령 지갑과 연결한 지갑이 다릅니다. 관리자 등록 여부도 확인하세요.");
             if (s.cancelled || s.deadline < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) throw new Exception("취소되었거나 만료된 쿠폰입니다.");
             Message("MetaMask에서 NFT 발행 가스비를 승인하세요. 상품 가격은 0 ETH입니다.");
-            var sent = await wallet.Call(new() { action = "nftRedeem", storageKey = "mythic-coupon", from = account.address, to = p[2], value = "0x0", data = "0xeda1122c" + p[4].Substring(2) });
+            string couponKey = "mythic-coupon:" + Sha3Keccack.Current.CalculateHash(string.Join("|", p));
+            var sent = await Wallet(new() { action = "nftRedeem", storageKey = couponKey, from = account.address, to = p[2], value = "0x0", data = "0xeda1122c" + p[4].Substring(2) });
             Message("전송 완료. NFT 발행 확인을 누르세요.\n거래 해시: " + sent.txHash);
             Debug.Log("[MythicNFT] tx=" + sent.txHash);
-#endif
         });
         private void OnDestroy()
         {

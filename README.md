@@ -1063,13 +1063,15 @@ Node.js v22.18.0 런타임 환경에서는 `--test-isolation=none` 플래그가 
 
 ### 15.3 선택 실습: WebGL 빌드 가이드
 
+WebGL의 **NFT 지갑 연결**은 브라우저 MetaMask의 `personal_sign`으로 서버 챌린지에 서명한 뒤 `Nft_BindWallet`을 호출합니다. **신화검NFT받기**도 WebGL MetaMask를 지원합니다. `MSW1|11155111|계약주소|수령주소|비밀값` 형식의 전체 쿠폰을 입력하고 발행 가스비를 승인한 뒤 **NFT발행확인**을 누릅니다. 상품 가격은 0 ETH이며 쿠폰별 전송 기록으로 중복 전송을 방지합니다. 변경된 C#과 `.jslib`는 WebGL을 다시 빌드하여 게시해야 반영됩니다. 쿠폰 수령의 실제 게시 환경 검증은 별도로 필요합니다.
+
 1. Unity Editor 상에서 Reown QR 기반의 기본 실습을 먼저 100% 완료합니다.
 2. Unity Hub에서 현재 설치된 Editor 버전(`6000.3.18f1`)에 해당하는 **WebGL Build Support** 컴포넌트 모듈을 추가 설치합니다.
 3. Unity Editor 상단 메뉴의 **File → Build Profiles**에서 활성 플랫폼을 **WebGL**로 전환(Switch Platform)합니다.
 4. 빌드 대상 씬(Scenes in Build) 목록에 **`Assets/Scene/1.unity`**만을 등록합니다.
 5. 별도의 SimpleMarket 프로토타입 씬을 대상으로 구성된 에디터 자동 빌드 메뉴는 사용하지 마십시오.
 6. 로컬 HTTP 웹 서버(예: Node.js `http-server` 또는 Python `http.server`)를 구동하여 빌드 결과물을 실행하고, PC 브라우저의 MetaMask 확장 프로그램을 연결하여 테스트합니다.
-7. Unity 클라이언트 내부의 `MythicNftPanel`은 에디터 및 모바일 QR 브리지 전용으로 설계되었으므로, WebGL 환경에서 NFT 실습을 진행할 때는 `NFTWorkshop` 웹 대시보드를 병행 활용합니다.
+7. `MythicNftPanel`은 Editor에서는 Reown QR, WebGL에서는 브라우저 MetaMask로 서명·쿠폰 수령을 처리합니다. 쿠폰 관리자 작업은 `NFTWorkshop` 웹 대시보드를 사용합니다.
 
 ---
 

@@ -47,6 +47,8 @@ public class PortfolioMarketDemo : MonoBehaviour
 
     private void Start()
     {
+        ConfigureScrollableList(inventoryContent);
+        ConfigureScrollableList(marketContent);
         live = gameObject.AddComponent<MarketLiveUpdates>();
         live.Changed += OnMarketChanged;
         if (refreshBtn != null) refreshBtn.onClick.AddListener(() => _ = RefreshAllAsync());
@@ -329,6 +331,30 @@ public class PortfolioMarketDemo : MonoBehaviour
             Debug.LogException(e);
             SetMessage("정산 실패 (Cloud Code/스크립트명 확인)");
         }
+    }
+
+    private static void ConfigureScrollableList(Transform content)
+    {
+        if (!(content is RectTransform rect)) return;
+        // Grow downwards from the viewport top using the actual row prefab heights.
+        rect.anchorMin = new Vector2(0, 1);
+        rect.anchorMax = new Vector2(1, 1);
+        rect.pivot = new Vector2(0.5f, 1);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(0, rect.sizeDelta.y);
+        var layout = content.GetComponent<VerticalLayoutGroup>() ?? content.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.childControlHeight = false;
+        layout.childForceExpandHeight = false;
+        var fitter = content.GetComponent<ContentSizeFitter>() ?? content.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var scroll = content.GetComponentInParent<ScrollRect>();
+        if (scroll && scroll.content == rect)
+        {
+            scroll.horizontal = false;
+            scroll.vertical = true;
+        }
+        LayoutRebuilder.MarkLayoutForRebuild(rect);
     }
 
     private static void ClearChildren(Transform parent)

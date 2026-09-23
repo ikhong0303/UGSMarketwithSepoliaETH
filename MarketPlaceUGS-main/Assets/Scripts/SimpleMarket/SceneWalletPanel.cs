@@ -107,6 +107,7 @@ namespace SimpleMarket
         }
         private static string FriendlyError(string error)
         {
+            if (error.Contains("RECEIVER_MUST_BE_EOA")) return "상점 수신 지갑에 스마트 계정/컨트랙트 코드가 있습니다. Cloud Save simple_market/config.receiverAddress를 확인하세요 (README 12.0절).";
             if (error.Contains("REVIEW_REQUIRED")) return "지급 결과를 관리자가 확인해야 합니다. 거래 해시를 보관하고 재결제하지 마세요.";
             if (error.Contains("SETUP_REQUIRED")) return "Cloud Save classroom_market의 Private state와 Cloud Code 배포를 확인하세요.";
             if (error.Contains("WRONG_PLAYER")) return "결제한 게임 계정과 상품(골드/전설검)에 맞는 확인 버튼을 사용하세요.";
@@ -163,12 +164,8 @@ namespace SimpleMarket
                 CheckOwner(player);
                 if (sword) swordPending = true; else pending = true;
                 Message("전송 완료. 블록체인 승인 및 UGS 지급 확인 중...");
-                for (int i = 0; i < 12; i++)
-                {
-                    if (await Claim(player, sent.txHash, sword)) return;
-                    await Task.Delay(8000, lifetime.Token);
-                }
-                Message("승인 대기 중입니다. 잠시 후 결제 확인을 누르세요. 다시 송금하지 않습니다.");
+                // Release the UI after one check; pending receipts remain saved for manual retry.
+                await Claim(player, sent.txHash, sword);
             }
             finally { if (this && Player == player) await Pending(player, sword); }
         });
@@ -207,7 +204,7 @@ namespace SimpleMarket
             if (receipt.status == "PENDING")
             {
                 string reason = string.IsNullOrEmpty(receipt.pendingReason) ? "OLD_SERVER: 해당 Claim 진단 버전을 Publish하세요." : receipt.pendingReason;
-                Message("입금 확인 대기: " + reason);
+                Message("입금 확인 대기: " + reason + "\n잠시 후 " + (sword ? "무기결제확인" : "골드결제확인") + "을 누르세요. 재결제는 필요 없습니다.");
                 Debug.LogWarning("[" + (sword ? "Sword" : "Gold") + "ClaimDiagnostic] tx=" + hash + " reason=" + reason);
                 return false;
             }

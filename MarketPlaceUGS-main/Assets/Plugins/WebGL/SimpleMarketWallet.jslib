@@ -75,12 +75,32 @@ mergeInto(LibraryManager.library, {
         }
         return reply({ address: address, chainId: chain, balanceEth: eth });
       }
-      if (request.action !== 'send') throw new Error('알 수 없는 지갑 요청입니다.');
+      if (request.action === 'nftSign') {
+        if (!address || address.toLowerCase() !== (request.from || '').toLowerCase()) throw new Error('지갑 계정이 바뀌었습니다. 다시 연결하세요.');
+        if (chain.toLowerCase() !== '0xaa36a7') throw new Error('Sepolia로 전환한 뒤 다시 연결하세요.');
+        if (typeof request.data !== 'string' || !request.data.length) throw new Error('서명 메시지가 없습니다.');
+        var bytes = new TextEncoder().encode(request.data);
+        var messageHex = '0x' + Array.from(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+        var signature = await provider.request({ method: 'personal_sign', params: [messageHex, address] });
+        return reply({ signature: signature });
+      }
+      var nftRedeem = request.action === 'nftRedeem';
+      if (request.action !== 'send' && !nftRedeem) throw new Error('알 수 없는 지갑 요청입니다.');
+      if (nftRedeem && !state.sending && read()) {
+        var previous = read();
+        if (previous.txHash) {
+          var receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [previous.txHash] });
+          if (receipt && receipt.status === '0x0') localStorage.removeItem(key);
+          else return reply({ txHash: previous.txHash });
+        } else throw new Error('이 쿠폰의 전송 결과가 미확인입니다. MetaMask 활동과 NFT발행확인을 먼저 확인하세요.');
+      }
       if (state.sending || read()) throw new Error('이전 결제가 있습니다. 결제 확인을 먼저 눌러주세요.');
       if (!address || address.toLowerCase() !== (request.from || '').toLowerCase()) throw new Error('지갑 계정이 바뀌었습니다. 다시 연결하세요.');
       if (chain.toLowerCase() !== '0xaa36a7') throw new Error('Sepolia로 전환한 뒤 다시 연결하세요.');
       if (!addressPattern.test(request.to) || /^0x0{40}$/i.test(request.to) || address.toLowerCase() === request.to.toLowerCase()) throw new Error('수신 지갑과 다른 구매자 지갑을 사용하세요.');
-      if (request.value !== '0x5af3107a4000' || !/^0x[0-9a-f]+$/i.test(request.data)) throw new Error('결제 정보가 올바르지 않습니다.');
+      if (nftRedeem) {
+        if (request.value !== '0x0' || !/^0xeda1122c[0-9a-f]{64}$/i.test(request.data)) throw new Error('NFT 쿠폰 거래 정보가 올바르지 않습니다.');
+      } else if (request.value !== '0x5af3107a4000' || !/^0x[0-9a-f]+$/i.test(request.data)) throw new Error('결제 정보가 올바르지 않습니다.');
       // Save BEFORE asking for approval. If the browser closes or RPC is ambiguous, do not auto-resend.
       save({ txHash: '', startedAt: Date.now() });
       state.sending = true;
