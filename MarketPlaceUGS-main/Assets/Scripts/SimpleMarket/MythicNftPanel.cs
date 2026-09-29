@@ -145,24 +145,36 @@ namespace SimpleMarket
                 Message("발행 완료! 신화검NFT tokenId: " + s.token + "\n현재 소유자: 0x" + owner.Substring(26));
                 return true;
             }
-            Message(s.cancelled ? "취소된 쿠폰입니다." : "아직 발행되지 않았습니다. 승인 대기 거래가 있으면 기다린 뒤 다시 확인하세요.");
+            ValidateCoupon(p, s);
+            Message("등록된 쿠폰입니다. 아직 발행되지 않았습니다.\n수령 지갑: " + s.recipient + "\n승인 대기 거래가 있으면 기다린 뒤 다시 확인하세요.");
             return false;
+        }
+        private static void ValidateCoupon(string[] p, (string recipient, BigInteger deadline, BigInteger token, bool cancelled) s)
+        {
+            if (string.Equals(s.recipient, "0x0000000000000000000000000000000000000000", StringComparison.OrdinalIgnoreCase))
+                throw new Exception("Sepolia 계약에 등록되지 않은 쿠폰입니다. 관리자 페이지에서 등록 거래의 성공 여부를 확인하세요. 쿠폰 초안만 생성한 상태에서는 수령할 수 없습니다.\n계약: " + p[2]);
+            if (s.cancelled) throw new Exception("관리자가 취소한 쿠폰입니다. 새 쿠폰을 요청하세요.");
+            if (!string.Equals(p[3], s.recipient, StringComparison.OrdinalIgnoreCase))
+                throw new Exception("쿠폰에 적힌 수령 지갑과 계약에 등록된 수령 지갑이 다릅니다. 관리자에게 원본 쿠폰을 확인하세요.\n쿠폰: " + p[3] + "\n계약 등록: " + s.recipient);
+            if (s.deadline < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                throw new Exception("만료된 쿠폰입니다. 관리자에게 새 쿠폰을 요청하세요.");
         }
         public void Check() => _ = Run(async () =>
         {
-            if (couponInput && !string.IsNullOrWhiteSpace(couponInput.text)) await Show(Coupon());
             await SyncAndRefresh();
+            // Keep the coupon diagnosis visible after inventory synchronization.
+            if (couponInput && !string.IsNullOrWhiteSpace(couponInput.text)) await Show(Coupon());
         });
         public void Redeem() => _ = Run(async () =>
         {
             var p = Coupon();
             if (await Show(p)) { await SyncAndRefresh(); return; }
             var s = await State(p);
+            ValidateCoupon(p, s);
             var account = await Wallet(new() { action = "connect", storageKey = "mythic-connect" });
             if (!string.Equals(account.address, p[3], StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(account.address, s.recipient, StringComparison.OrdinalIgnoreCase))
-                throw new Exception("쿠폰 수령 지갑과 연결한 지갑이 다릅니다. 관리자 등록 여부도 확인하세요.");
-            if (s.cancelled || s.deadline < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) throw new Exception("취소되었거나 만료된 쿠폰입니다.");
+                throw new Exception("쿠폰 수령 지갑과 현재 게임에 연결된 지갑이 다릅니다. MetaMask에서 수령 지갑으로 전환하세요. 기존 연결 주소가 유지되면 게임의 WalletConnect 연결을 해제한 뒤 다시 연결하세요.\n수령 지갑: " + s.recipient + "\n현재 연결: " + account.address);
             Message("MetaMask에서 NFT 발행 가스비를 승인하세요. 상품 가격은 0 ETH입니다.");
             string couponKey = "mythic-coupon:" + Sha3Keccack.Current.CalculateHash(string.Join("|", p));
             var sent = await Wallet(new() { action = "nftRedeem", storageKey = couponKey, from = account.address, to = p[2], value = "0x0", data = "0xeda1122c" + p[4].Substring(2) });
