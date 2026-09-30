@@ -66,6 +66,19 @@ class Program
         Check(!bridge.HasSavedWallet, "interrupted QR does not save d mapping");
         AuthenticationService.Instance.PlayerId = "e";
         Check(!bridge.HasSavedWallet, "interrupted QR does not save e mapping");
+        AuthenticationService.Instance.PlayerId = "a";
+        await Connect(bridge);
+        var removed = AppKit.Instance.SignClient.AddressProvider.DefaultSession.Topic;
+        AppKit.Instance.SignClient.Session.Values.Remove(removed);
+        await Reject(() => bridge.Call(new() { action = "status" }), "deleted a session requires approval");
+        AppKit.NextAddress = "A";
+        Check((await Connect(bridge)).address == "A", "deleted a session reapproves original address");
+        UnityEngine.Application.cloudProjectId = "second-project";
+        Check(!bridge.HasSavedWallet, "project isolates remembered wallet");
+        AppKit.NextAddress = "D";
+        Check((await Connect(bridge)).address == "D", "second project requires its own QR approval");
+        UnityEngine.Application.cloudProjectId = "project";
+        Check((await Connect(bridge)).address == "A", "original project mapping remains intact");
         Console.WriteLine($"{checks} checks passed");
     }
 }

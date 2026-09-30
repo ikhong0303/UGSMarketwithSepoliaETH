@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using Unity.Services.Authentication;
+using Unity.Services.Core;
 #if SIMPLE_MARKET_REOWN && !UNITY_WEBGL
 using System.Numerics;
 using Reown.AppKit.Unity;
@@ -27,6 +29,17 @@ namespace SimpleMarket
         private bool sending;
         private string lastAccount = "";
         private readonly CancellationTokenSource lifetime = new();
+        private static bool connecting;
+        [Serializable] private class WalletMapping { public string address, topic; }
+        private static string Owner()
+        {
+            if (UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn)
+                throw new Exception("게임 계정에 먼저 로그인하세요.");
+            return "simple-market-wallet-v1:" + Uri.EscapeDataString(Application.cloudProjectId) + ":" +
+                Uri.EscapeDataString(MarketCloudClient.EnvironmentName) + ":" + Uri.EscapeDataString(AuthenticationService.Instance.PlayerId);
+        }
+        private static WalletMapping Mapping(string owner) => PlayerPrefs.HasKey(owner) ? JsonUtility.FromJson<WalletMapping>(PlayerPrefs.GetString(owner)) : null;
+        public bool HasSavedWallet => Mapping(Owner()) != null;
         [Serializable] private class Pending { public string txHash = ""; }
         private static string Key(string owner) => "simple-market-qr-payment:" + owner;
         private static Pending Read(string owner) => PlayerPrefs.HasKey(Key(owner)) ? JsonUtility.FromJson<Pending>(PlayerPrefs.GetString(Key(owner))) : null;
@@ -56,36 +69,16 @@ namespace SimpleMarket
             }
 #if SIMPLE_MARKET_REOWN && !UNITY_WEBGL
             await Initialize();
-            if (request.action == "connect")
-            {
-                if (!AppKit.IsAccountConnected && !await AppKit.ConnectorController.TryResumeSessionAsync())
-                {
-                    AppKit.OpenModal();
-                    var deadline = DateTime.UtcNow.AddMinutes(3);
-                    DateTime? modalClosedAt = null;
-                    while (!AppKit.IsAccountConnected)
-                    {
-                        await Task.Delay(250, lifetime.Token);
-                        if (AppKit.IsAccountConnected) break;
-                        // Approval can close the modal before the account state is updated.
-                        if (AppKit.IsModalOpen) modalClosedAt = null;
-                        else
-                        {
-                            modalClosedAt ??= DateTime.UtcNow;
-                            if (DateTime.UtcNow - modalClosedAt.Value >= TimeSpan.FromSeconds(3))
-                                throw new Exception("지갑 연결 창이 닫혔습니다. MetaMask에서 승인했다면 지갑 연결을 다시 눌러주세요.");
-                        }
-                        if (DateTime.UtcNow > deadline) { AppKit.CloseModal(); throw new Exception("QR 연결 대기 시간이 지났습니다. 다시 연결하세요."); }
-                    }
-                }
-                await AppKit.NetworkController.ChangeActiveChainAsync(Sepolia());
-            }
-            if (!AppKit.IsAccountConnected) throw new Exception("지갑 연결을 먼저 눌러주세요.");
-            var account = AppKit.Account;
+            var owner = Owner();
+            await SelectSession(owner, request.action == "connect");
+            if (owner != Owner()) throw new Exception("게임 계정이 변경되었습니다. 다시 연결하세요.");
+            var session = AppKit.Instance.SignClient.Session.Get(Mapping(owner).topic);
+            var account = session.CurrentAccount("eip155:11155111");
             if (account.ChainId != "eip155:11155111") throw new Exception("MetaMask에서 Sepolia를 선택하고 다시 연결하세요.");
             if (request.action == "connect" || request.action == "status")
             {
                 var balance = await AppKit.Evm.GetBalanceAsync(account.Address);
+                if (owner != Owner()) throw new Exception("게임 계정이 변경되었습니다. 다시 연결하세요.");
                 lastAccount = account.AccountId;
                 return new() { address = account.Address, chainId = "0xaa36a7", balanceEth = ((decimal)balance / 1000000000000000000m).ToString("0.######", CultureInfo.InvariantCulture) };
             }
@@ -100,7 +93,7 @@ namespace SimpleMarket
                 {
                     var hex = "0x" + BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes(request.data)).Replace("-", "");
                     var signature = await AppKit.Instance.SignClient.RequestAsync<string[], string>(
-                        "personal_sign", new[] { hex, account.Address }, chainId: "eip155:11155111", ct: lifetime.Token);
+                        session.Topic, "personal_sign", new[] { hex, account.Address }, chainId: "eip155:11155111", ct: lifetime.Token);
                     return new() { signature = signature };
                 }
                 finally { sending = false; }
@@ -119,7 +112,7 @@ namespace SimpleMarket
                     var nftTx = new Dictionary<string, object> { { "from", account.Address }, { "to", mythicNftContract },
                         { "value", "0x0" }, { "data", request.data }, { "chainId", "0xaa36a7" } };
                     var nftHash = await AppKit.Instance.SignClient.RequestAsync<Dictionary<string, object>[], string>(
-                        "eth_sendTransaction", new[] { nftTx }, chainId: "eip155:11155111", ct: lifetime.Token);
+                        session.Topic, "eth_sendTransaction", new[] { nftTx }, chainId: "eip155:11155111", ct: lifetime.Token);
                     if (!Regex.IsMatch(nftHash ?? "", "^0x[0-9a-fA-F]{64}$")) throw new Exception("거래 해시를 MetaMask에서 확인하세요.");
                     return new() { txHash = nftHash };
                 }
@@ -147,7 +140,7 @@ namespace SimpleMarket
                 // passes through Nethereum's interceptor, which casts parameters to
                 // TransactionInput and cannot accept this null-free dictionary.
                 var hash = await AppKit.Instance.SignClient.RequestAsync<Dictionary<string, object>[], string>(
-                    "eth_sendTransaction", new[] { transaction }, chainId: "eip155:11155111", ct: lifetime.Token);
+                    session.Topic, "eth_sendTransaction", new[] { transaction }, chainId: "eip155:11155111", ct: lifetime.Token);
                 if (!Regex.IsMatch(hash ?? "", "^0x[0-9a-fA-F]{64}$")) throw new Exception("MetaMask 활동에서 거래 해시를 확인하세요.");
                 Save(request.storageKey, hash);
                 return new() { txHash = hash };
@@ -166,6 +159,73 @@ namespace SimpleMarket
 #endif
         }
 #if SIMPLE_MARKET_REOWN && !UNITY_WEBGL
+        private async Task SelectSession(string owner, bool allowApproval)
+        {
+            if (connecting || sending) throw new Exception("열린 지갑 요청을 먼저 완료하세요.");
+            connecting = true;
+            try
+            {
+                var client = AppKit.Instance.SignClient;
+                var saved = Mapping(owner);
+                if (saved != null && Array.IndexOf(client.Session.Keys, saved.topic) >= 0)
+                {
+                    var existing = client.Session.Get(saved.topic);
+                    if (existing.Expiry > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                    {
+                        try
+                        {
+                            if (string.Equals(existing.CurrentAccount("eip155:11155111").Address, saved.address, StringComparison.OrdinalIgnoreCase))
+                            {
+                                client.AddressProvider.DefaultSession = existing;
+                                await client.AddressProvider.SetDefaultNamespaceAsync("eip155");
+                                await client.AddressProvider.SetDefaultChainIdAsync("eip155:11155111");
+                                await AppKit.ConnectorController.TryResumeSessionAsync();
+                                return;
+                            }
+                        }
+                        catch (InvalidOperationException) { }
+                    }
+                }
+                if (!allowApproval) throw new Exception("유효한 본인 세션이 없습니다. 지갑 연결에서 기존 주소로 QR 재승인하세요.");
+                var previous = new HashSet<string>(client.Session.Keys);
+                Action restore = () => { };
+                try
+                {
+                    AppKit.OpenModal(ViewType.QrCode);
+                    restore = ReownQrLayout.Enlarge();
+                    var deadline = DateTime.UtcNow.AddMinutes(3);
+                    DateTime? closedAt = null;
+                    while (true)
+                    {
+                        if (owner != Owner()) throw new Exception("QR 대기 중 게임 계정이 변경되었습니다. 다시 연결하세요.");
+                        foreach (var topic in client.Session.Keys)
+                        {
+                            if (previous.Contains(topic)) continue;
+                            var approved = client.Session.Get(topic);
+                            if (!(approved.Expiry > DateTimeOffset.UtcNow.ToUnixTimeSeconds())) continue;
+                            var address = approved.CurrentAccount("eip155:11155111").Address;
+                            if (saved != null && !string.Equals(saved.address, address, StringComparison.OrdinalIgnoreCase))
+                                throw new Exception("기존 지갑 " + saved.address + "로 재승인하세요. 다른 지갑으로 변경하지 않았습니다.");
+                            client.AddressProvider.DefaultSession = approved;
+                            await client.AddressProvider.SetDefaultNamespaceAsync("eip155");
+                            await client.AddressProvider.SetDefaultChainIdAsync("eip155:11155111");
+                            if (owner != Owner()) throw new Exception("게임 계정이 변경되었습니다.");
+                            PlayerPrefs.SetString(owner, JsonUtility.ToJson(new WalletMapping { address = address, topic = topic }));
+                            PlayerPrefs.Save();
+                            return;
+                        }
+                        if (DateTime.UtcNow >= deadline) throw new Exception("QR 승인 시간이 초과되었습니다. 다시 연결하세요.");
+                        if (AppKit.IsModalOpen) closedAt = null;
+                        else closedAt ??= DateTime.UtcNow;
+                        if (closedAt.HasValue && DateTime.UtcNow - closedAt.Value > TimeSpan.FromSeconds(3))
+                            throw new Exception("QR 연결이 취소되었습니다. 다시 연결하세요.");
+                        await Task.Delay(250, lifetime.Token);
+                    }
+                }
+                finally { restore(); AppKit.CloseModal(); }
+            }
+            finally { connecting = false; }
+        }
         private static Chain Sepolia() => new("eip155", "11155111", "Ethereum Sepolia",
             new Currency("Sepolia Ether", "ETH", 18), new BlockExplorer("Etherscan", "https://sepolia.etherscan.io"),
             "https://ethereum-sepolia-rpc.publicnode.com", true, ChainConstants.Chains.Ethereum.ImageUrl);
@@ -186,7 +246,18 @@ namespace SimpleMarket
         {
 #if SIMPLE_MARKET_REOWN && !UNITY_WEBGL
             if (!AppKit.IsInitialized) return;
-            string account = AppKit.IsAccountConnected ? AppKit.Account.AccountId : "";
+            string account = "";
+            try
+            {
+                var saved = Mapping(Owner());
+                if (saved != null && Array.IndexOf(AppKit.Instance.SignClient.Session.Keys, saved.topic) >= 0)
+                {
+                    var current = AppKit.Instance.SignClient.Session.Get(saved.topic);
+                    if (current.Expiry > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                        account = current.CurrentAccount("eip155:11155111").AccountId;
+                }
+            }
+            catch (Exception) { account = ""; }
             if (account != lastAccount) { lastAccount = account; Changed?.Invoke(); }
 #endif
         }
